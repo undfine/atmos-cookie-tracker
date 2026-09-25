@@ -2,7 +2,9 @@
     const KEY = '_atmos_attribution';
     const urlParams = new URLSearchParams(window.location.search);
 
-    // Storage key => form field suffix (url param name)
+    // Storage key => url param name. Form fields: last touch uses the plain
+    // param name (utm_source), first touch is prefixed (first_utm_source).
+    // Must match atmos_get_field_name() in plugin.php.
     const params = {
         src: 'utm_source',
         mdm: 'utm_medium',
@@ -40,12 +42,14 @@
 
     const stripWww = (host) => host.replace(/^www\./i, '');
 
-    // Returns the referrer only if it comes from another site
+    // Returns the referrer (origin + path only) if it comes from another site.
+    // Its query string and fragment belong to the referring site and are dropped.
     const getExternalReferrer = () => {
         if (!document.referrer) return null;
         try {
             const ref = new URL(document.referrer);
-            return stripWww(ref.hostname) === stripWww(window.location.hostname) ? null : document.referrer;
+            if (!/^https?:$/.test(ref.protocol)) return null;
+            return stripWww(ref.hostname) === stripWww(window.location.hostname) ? null : ref.origin + ref.pathname;
         } catch (e) {
             return null;
         }
@@ -69,7 +73,7 @@
             const first = stored.first?.[key];
             const last = stored.last?.[key];
             if (isValid(first)) appendHiddenInput(form, `first_${param}`, first);
-            if (isValid(last)) appendHiddenInput(form, `last_${param}`, last);
+            if (isValid(last)) appendHiddenInput(form, param, last);
         }
     };
 

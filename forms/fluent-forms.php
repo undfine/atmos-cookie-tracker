@@ -48,8 +48,8 @@ class Fluent_Forms_Adapter {
 		
 		$keys = array();
 		foreach ( atmos_get_param_map() as $param ) {
-			$keys[] = 'first_' . $param;
-			$keys[] = 'last_' . $param;
+			$keys[] = atmos_get_field_name( 'first', $param );
+			$keys[] = atmos_get_field_name( 'last', $param );
 		}
 
 		return $keys;
@@ -103,7 +103,7 @@ class Fluent_Forms_Adapter {
 
 		foreach ( array( 'first', 'last' ) as $touch ) {
 			foreach ( atmos_get_param_map() as $param ) {
-				$key = $touch . '_' . $param;
+				$key = atmos_get_field_name( $touch, $param );
 
 				// Check in parsed data first, then direct POST, then the cookie
 				$value = null;
@@ -116,7 +116,7 @@ class Fluent_Forms_Adapter {
 				}
 
 				if ( $value ) {
-					$value = 'referrer' === $param ? esc_url_raw( $value ) : sanitize_text_field( $value );
+					$value = 'referrer' === $param ? atmos_clean_referrer( $value ) : sanitize_text_field( $value );
 				}
 
 				// Only store parameters that were actually captured

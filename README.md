@@ -26,7 +26,7 @@ The plugin tracks the following attribution data:
 - `utm_content` - Ad/creative variant (optional)
 - `gclid` - Google Click ID for Google Ads tracking
 - `fbclid` - Facebook Click ID for Facebook Ads tracking
-- `referrer` - Referring URL (external sites only)
+- `referrer` - Referring URL, external sites only, reduced to origin + path (the referring site's query string and fragment are dropped)
 
 Both **first-touch** (initial visit) and **last-touch** (most recent visit) values are stored. Only parameters that are present and non-empty are stored; missing ones are omitted rather than saved as empty values.
 
@@ -90,16 +90,20 @@ The plugin JavaScript (`atmos-tracker.js`) automatically:
 
 ### Field Names in Form Submissions
 
-Attribution data is stored with these field names:
+Last touch uses the plain parameter names, since most CRMs accept a single set and expect these names. First touch is prefixed with `first_`.
 
-- `first_utm_source`, `last_utm_source`
-- `first_utm_medium`, `last_utm_medium`
-- `first_utm_campaign`, `last_utm_campaign`
-- `first_utm_term`, `last_utm_term`
-- `first_utm_content`, `last_utm_content`
-- `first_gclid`, `last_gclid`
-- `first_fbclid`, `last_fbclid`
-- `first_referrer`, `last_referrer`
+| Last touch | First touch |
+|---|---|
+| `utm_source` | `first_utm_source` |
+| `utm_medium` | `first_utm_medium` |
+| `utm_campaign` | `first_utm_campaign` |
+| `utm_term` | `first_utm_term` |
+| `utm_content` | `first_utm_content` |
+| `gclid` | `first_gclid` |
+| `fbclid` | `first_fbclid` |
+| `referrer` | `first_referrer` |
+
+Only parameters that were captured are submitted.
 
 ## Using Attribution Data in Fluent Forms
 
@@ -119,6 +123,8 @@ To display attribution fields in the Fluent Forms entry view table:
 2. Add hidden input fields with the exact field names listed above
 3. The values will automatically appear in the entry details
 
+Hidden fields are also what make the values available in Fluent Forms integration feeds (CRM field mapping only lists fields defined in the form). For most CRMs, add the last-touch fields (`utm_source`, `utm_medium`, `utm_campaign`, ...) and map those.
+
 ### Reading Attribution in Other Plugins
 
 Use `atmos_get_attribution()` to read the cookie server-side. It returns only captured parameters, keyed by public name:
@@ -132,7 +138,7 @@ $attribution = function_exists( 'atmos_get_attribution' ) ? atmos_get_attributio
 
 Once hidden fields are added to your form, you can use attribution data in:
 
-- **Email notifications**: `{inputs.first_utm_source}`, `{inputs.last_utm_campaign}`, etc.
+- **Email notifications**: `{inputs.utm_source}`, `{inputs.first_utm_campaign}`, etc.
 - **Confirmations**: Display the source that brought them to your site
 - **Integrations**: Pass attribution data to CRM systems, email marketing platforms, etc.
 
@@ -147,9 +153,9 @@ Email: {inputs.email}
 Attribution:
 First Touch Source: {inputs.first_utm_source}
 First Touch Campaign: {inputs.first_utm_campaign}
-Last Touch Source: {inputs.last_utm_source}
-Last Touch Campaign: {inputs.last_utm_campaign}
-Google Click ID: {inputs.last_gclid}
+Last Touch Source: {inputs.utm_source}
+Last Touch Campaign: {inputs.utm_campaign}
+Google Click ID: {inputs.gclid}
 ```
 
 ## Technical Details
@@ -207,6 +213,8 @@ Currently, the plugin only has built-in integration with Fluent Forms. Integrati
 ## Changelog
 
 ### Version 1.2
+- Last-touch fields renamed to plain parameter names (`utm_source`, `gclid`, ...); first touch keeps the `first_` prefix
+- Referrer stored as origin + path (query string and fragment removed)
 - Internal navigation no longer overwrites last-touch attribution; only external referrers are recorded
 - Added `utm_term` and `utm_content` (stored only when present)
 - Forms are populated on load and at submit time, replacing the 1-second delay

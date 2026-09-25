@@ -32,6 +32,39 @@ function atmos_get_param_map() {
 }
 
 /**
+ * Form field name for a touch/param pair. Last touch uses the plain param name
+ * (e.g. utm_source) so it works with CRMs expecting a single set; first touch is
+ * prefixed (first_utm_source). Must match fillForm() in js/atmos-tracker.js.
+ *
+ * @param string $touch 'first' or 'last'.
+ * @param string $param Public param name, e.g. 'utm_source'.
+ * @return string
+ */
+function atmos_get_field_name( $touch, $param ) {
+    return 'last' === $touch ? $param : $touch . '_' . $param;
+}
+
+/**
+ * Reduce a referrer to origin + path. The query string and fragment belong to the
+ * referring site (its own UTMs, search terms, possible PII) and are dropped.
+ *
+ * @param string $url Referrer URL.
+ * @return string Cleaned URL, or '' if not a valid http(s) URL.
+ */
+function atmos_clean_referrer( $url ) {
+    $parts = wp_parse_url( $url );
+    if ( empty( $parts['scheme'] ) || empty( $parts['host'] ) || ! in_array( strtolower( $parts['scheme'] ), array( 'http', 'https' ), true ) ) {
+        return '';
+    }
+
+    $clean = strtolower( $parts['scheme'] ) . '://' . $parts['host']
+        . ( isset( $parts['port'] ) ? ':' . $parts['port'] : '' )
+        . ( isset( $parts['path'] ) ? $parts['path'] : '/' );
+
+    return esc_url_raw( $clean );
+}
+
+/**
  * Read attribution from the tracking cookie, keyed by public param name.
  * Only parameters that were actually captured are included.
  *
@@ -57,7 +90,7 @@ function atmos_get_attribution() {
         foreach ( atmos_get_param_map() as $key => $param ) {
             if ( isset( $raw[ $touch ][ $key ] ) && is_scalar( $raw[ $touch ][ $key ] ) && '' !== $raw[ $touch ][ $key ] ) {
                 $value = 'referrer' === $param
-                    ? esc_url_raw( $raw[ $touch ][ $key ] )
+                    ? atmos_clean_referrer( $raw[ $touch ][ $key ] )
                     : sanitize_text_field( $raw[ $touch ][ $key ] );
                 if ( '' !== $value ) {
                     $result[ $touch ][ $param ] = $value;
