@@ -8,7 +8,7 @@ Atmos Cookie Tracker automatically tracks visitor attribution data across your W
 
 ## Features
 
-- **Automatic Attribution Tracking**: Captures UTM parameters, Google Click IDs (gclid), Facebook Click IDs (fbclid), and referrer information
+- **Automatic Attribution Tracking**: Captures UTM parameters, Google, Microsoft and Meta click IDs, and referrer information
 - **First & Last Touch Attribution**: Tracks both the initial visitor source and the most recent interaction
 - **Client-Side Storage**: Stores data in localStorage and secure cookies to persist across page views
 - **Cache-Friendly**: Uses JavaScript to populate form fields, avoiding cached server-side values
@@ -24,11 +24,25 @@ The plugin tracks the following attribution data:
 - `utm_campaign` - Campaign name (e.g., "summer-sale", "product-launch")
 - `utm_term` - Paid search keyword (optional)
 - `utm_content` - Ad/creative variant (optional)
-- `gclid` - Google Click ID for Google Ads tracking
-- `fbclid` - Facebook Click ID for Facebook Ads tracking
+- `gclid` - Google Ads click ID
+- `gbraid`, `wbraid` - Google Ads click IDs used in place of `gclid` for some iOS traffic
+- `msclkid` - Microsoft (Bing) Ads click ID
+- `fbclid` - Meta (Facebook/Instagram) click ID
 - `referrer` - Referring URL, external sites only, reduced to origin + path (the referring site's query string and fragment are dropped)
 
 Both **first-touch** (initial visit) and **last-touch** (most recent visit) values are stored. Only parameters that are present and non-empty are stored; missing ones are omitted rather than saved as empty values.
+
+### Source and medium from click IDs
+
+When a URL has a click ID but **neither** `utm_source` nor `utm_medium`, both are filled in automatically:
+
+| URL contains | `utm_source` | `utm_medium` |
+|---|---|---|
+| `gclid`, `gbraid`, `wbraid`, or `gad_source` | `google` | `cpc` |
+| `msclkid` | `bing` | `cpc` |
+| `fbclid` | `meta` | `social` |
+
+If either UTM is present, nothing is inferred, so tagged links are never altered or mixed. `gad_source` only marks a Google Ads click and isn't stored itself. `fbclid` is marked `social` rather than paid because Meta adds it to every outbound link, including organic posts; tag Meta ads with their own UTMs to identify paid traffic.
 
 ### What counts as a touch
 
@@ -100,6 +114,9 @@ Last touch uses the plain parameter names, since most CRMs accept a single set a
 | `utm_term` | `first_utm_term` |
 | `utm_content` | `first_utm_content` |
 | `gclid` | `first_gclid` |
+| `gbraid` | `first_gbraid` |
+| `wbraid` | `first_wbraid` |
+| `msclkid` | `first_msclkid` |
 | `fbclid` | `first_fbclid` |
 | `referrer` | `first_referrer` |
 
@@ -213,6 +230,8 @@ Currently, the plugin only has built-in integration with Fluent Forms. Integrati
 ## Changelog
 
 ### Version 1.2
+- Added `gbraid`, `wbraid` and `msclkid` click IDs
+- `utm_source`/`utm_medium` inferred from click IDs when neither is present (Google and Bing: `cpc`, Meta: `social`)
 - Last-touch fields renamed to plain parameter names (`utm_source`, `gclid`, ...); first touch keeps the `first_` prefix
 - Referrer stored as origin + path (query string and fragment removed)
 - Internal navigation no longer overwrites last-touch attribution; only external referrers are recorded

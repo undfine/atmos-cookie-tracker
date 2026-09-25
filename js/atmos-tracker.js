@@ -12,9 +12,22 @@
         trm: 'utm_term',
         cnt: 'utm_content',
         gclid: 'gclid',
+        gbraid: 'gbraid',
+        wbraid: 'wbraid',
+        msclkid: 'msclkid',
         fbclid: 'fbclid',
         referrer: 'referrer',
     };
+
+    // Click ID url params => inferred source/medium, applied only when the URL has
+    // neither utm_source nor utm_medium. First match wins. gad_source isn't stored,
+    // it only marks a Google Ads click. fbclid is added to all outbound Meta links
+    // (organic too), so it's 'social'; paid Meta traffic is identified by its own UTMs.
+    const clickIdSources = [
+        { ids: ['gclid', 'gbraid', 'wbraid', 'gad_source'], src: 'google', mdm: 'cpc' },
+        { ids: ['msclkid'], src: 'bing', mdm: 'cpc' },
+        { ids: ['fbclid'], src: 'meta', mdm: 'social' },
+    ];
 
     const setCookie = (name, value, days) => {
         const expires = new Date(Date.now() + days * 864e5).toUTCString();
@@ -95,6 +108,14 @@
     for (const [key, param] of Object.entries(params)) {
         const val = key === 'referrer' ? getExternalReferrer() : urlParams.get(param);
         if (isValid(val)) current[key] = val;
+    }
+
+    if (!current.src && !current.mdm) {
+        const match = clickIdSources.find(s => s.ids.some(id => isValid(urlParams.get(id))));
+        if (match) {
+            current.src = match.src;
+            current.mdm = match.mdm;
+        }
     }
 
     if (Object.keys(current).length > 0) {

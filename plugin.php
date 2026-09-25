@@ -26,6 +26,9 @@ function atmos_get_param_map() {
         'trm'      => 'utm_term',
         'cnt'      => 'utm_content',
         'gclid'    => 'gclid',
+        'gbraid'   => 'gbraid',
+        'wbraid'   => 'wbraid',
+        'msclkid'  => 'msclkid',
         'fbclid'   => 'fbclid',
         'referrer' => 'referrer',
     );
