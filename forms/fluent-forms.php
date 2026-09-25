@@ -13,14 +13,6 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Fluent_Forms_Adapter {
 
-    private $params = array(
-			'utm_source',
-			'utm_medium',
-			'utm_campaign',
-			'gclid',
-			'fbclid',
-			'referrer',
-		);
     	/**
 	 * Custom logger that always works.
 	 */
@@ -41,34 +33,11 @@ class Fluent_Forms_Adapter {
 	 * Register hooks.
 	 */
 	public function __construct(){
-        // Echo hidden fields to form HTML
-		add_action( 'fluentform/before_form_render', array( $this, 'ff_echo_hidden_fields' ), 10, 1 );
-		
+        // Hidden fields are added client-side by atmos-tracker.js, only for captured params.
         // Inject data before Fluent Forms processes submission
         add_filter('fluentform/insert_response_data', array($this, 'ff_insert_response_data'), 10, 3);
 	}
 
-
-    /**
-	 * Get attribution data from cookie.
-	 *
-	 * @return array
-	 */
-	public function get_attribution_data() {
-		$cookie_key = '_atmos_attribution';
-		
-		if ( ! isset( $_COOKIE[ $cookie_key ] ) ) {
-			return array();
-		}
-
-		$data = json_decode( stripslashes( $_COOKIE[ $cookie_key ] ), true );
-		
-		if ( ! is_array( $data ) || ! isset( $data['first'] ) || ! isset( $data['last'] ) ) {
-			return array();
-		}
-
-		return $data;
-	}
 
 	/**
 	 * Get form field keys that match the JS mapping.
@@ -78,7 +47,7 @@ class Fluent_Forms_Adapter {
 	public function get_field_mapping() {
 		
 		$keys = array();
-		foreach ( $this->params as $param ) {
+		foreach ( atmos_get_param_map() as $param ) {
 			$keys[] = 'first_' . $param;
 			$keys[] = 'last_' . $param;
 		}
@@ -99,24 +68,6 @@ class Fluent_Forms_Adapter {
     }
 
     
-	/**
-	 * Echo hidden fields (fluentform/before_form_render action).
-	 *
-	 * @param object $form Form object.
-	 */
-	public function ff_echo_hidden_fields( $form ) {
-        $this->log('=== ATMOS: before_form_render hook fired ===');
-        $this->log('Form ID: ' . (isset($form->id) ? $form->id : 'unknown'));
-		
-		$field_names = $this->get_field_mapping();
-		
-		foreach ( $field_names as $field_name ) {
-			echo '<input type="hidden" name="' . esc_attr( $field_name ) . '" value="" class="atmos-attribution-field" id="' . esc_attr( $field_name ) . '">';
-            // $this->log('Echoed hidden field: ' . $field_name);
-		}
-	}
-
-
 	/**
 	 * Inject attribution data into form submission data.
 	 * This runs before Fluent Forms validates/stores the data.
@@ -146,22 +97,33 @@ class Fluent_Forms_Adapter {
 			}
 		}
 
-		$keys = $this->get_field_mapping();
+		// Server-side fallback for when the JS didn't populate the form
+		$cookie_data = atmos_get_attribution();
 		$added_count = 0;
 
-		foreach ( $keys as $key ) {
-			// Check in parsed data first, then fall back to direct POST
-			$value = null;
-			if ( isset( $posted_data[ $key ] ) && ! empty( $posted_data[ $key ] ) ) {
-				$value = $posted_data[ $key ];
-			} elseif ( isset( $_POST[ $key ] ) && ! empty( $_POST[ $key ] ) ) {
-				$value = $_POST[ $key ];
-			}
-			
-			if ( $value ) {
-				$formData[ $key ] = sanitize_text_field( $value );
-				$added_count++;
-				// $this->log('Added to formData: ' . $key . ' = ' . $value);
+		foreach ( array( 'first', 'last' ) as $touch ) {
+			foreach ( atmos_get_param_map() as $param ) {
+				$key = $touch . '_' . $param;
+
+				// Check in parsed data first, then direct POST, then the cookie
+				$value = null;
+				if ( ! empty( $posted_data[ $key ] ) && is_scalar( $posted_data[ $key ] ) ) {
+					$value = $posted_data[ $key ];
+				} elseif ( ! empty( $_POST[ $key ] ) && is_scalar( $_POST[ $key ] ) ) {
+					$value = wp_unslash( $_POST[ $key ] );
+				} elseif ( ! empty( $cookie_data[ $touch ][ $param ] ) ) {
+					$value = $cookie_data[ $touch ][ $param ];
+				}
+
+				if ( $value ) {
+					$value = 'referrer' === $param ? esc_url_raw( $value ) : sanitize_text_field( $value );
+				}
+
+				// Only store parameters that were actually captured
+				if ( $value ) {
+					$formData[ $key ] = $value;
+					$added_count++;
+				}
 			}
 		}
 		

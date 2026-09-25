@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Atmos Cookie Tracker
  * Description: Captures First & Last Touch UTMs and Ad IDs into LocalStorage/Cookies.
- * Version: 1.1
+ * Version: 1.2
  * Author: Dustin Wight
  */
 
@@ -10,12 +10,71 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit; // Exit if accessed directly
 }
 
+define( 'ATMOS_COOKIE_KEY', '_atmos_attribution' );
+
+/**
+ * Storage key (as used in the cookie JSON) => public param name.
+ * Must match the `params` map in js/atmos-tracker.js.
+ *
+ * @return array
+ */
+function atmos_get_param_map() {
+    return array(
+        'src'      => 'utm_source',
+        'mdm'      => 'utm_medium',
+        'cmp'      => 'utm_campaign',
+        'trm'      => 'utm_term',
+        'cnt'      => 'utm_content',
+        'gclid'    => 'gclid',
+        'fbclid'   => 'fbclid',
+        'referrer' => 'referrer',
+    );
+}
+
+/**
+ * Read attribution from the tracking cookie, keyed by public param name.
+ * Only parameters that were actually captured are included.
+ *
+ * Example: array( 'first' => array( 'utm_source' => 'google' ), 'last' => array( ... ) )
+ *
+ * @return array Empty array when no attribution is stored.
+ */
+function atmos_get_attribution() {
+    if ( empty( $_COOKIE[ ATMOS_COOKIE_KEY ] ) ) {
+        return array();
+    }
+
+    $raw = json_decode( wp_unslash( $_COOKIE[ ATMOS_COOKIE_KEY ] ), true );
+    if ( ! is_array( $raw ) ) {
+        return array();
+    }
+
+    $result = array();
+    foreach ( array( 'first', 'last' ) as $touch ) {
+        if ( empty( $raw[ $touch ] ) || ! is_array( $raw[ $touch ] ) ) {
+            continue;
+        }
+        foreach ( atmos_get_param_map() as $key => $param ) {
+            if ( isset( $raw[ $touch ][ $key ] ) && is_scalar( $raw[ $touch ][ $key ] ) && '' !== $raw[ $touch ][ $key ] ) {
+                $value = 'referrer' === $param
+                    ? esc_url_raw( $raw[ $touch ][ $key ] )
+                    : sanitize_text_field( $raw[ $touch ][ $key ] );
+                if ( '' !== $value ) {
+                    $result[ $touch ][ $param ] = $value;
+                }
+            }
+        }
+    }
+
+    return $result;
+}
+
 function atm_enqueue_tracking_script() {
     wp_enqueue_script(
         'atm-tracker',
         plugins_url( 'js/atmos-tracker.js', __FILE__ ),
         array(),
-        '1.1',
+        '1.2',
         true // Load in footer for better performance
     );
 }

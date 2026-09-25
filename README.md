@@ -22,11 +22,17 @@ The plugin tracks the following attribution data:
 - `utm_source` - Marketing source (e.g., "google", "facebook", "newsletter")
 - `utm_medium` - Marketing medium (e.g., "cpc", "email", "social")
 - `utm_campaign` - Campaign name (e.g., "summer-sale", "product-launch")
+- `utm_term` - Paid search keyword (optional)
+- `utm_content` - Ad/creative variant (optional)
 - `gclid` - Google Click ID for Google Ads tracking
 - `fbclid` - Facebook Click ID for Facebook Ads tracking
-- `referrer` - Page referrer URL
+- `referrer` - Referring URL (external sites only)
 
-Both **first-touch** (initial visit) and **last-touch** (most recent visit) values are stored for each parameter.
+Both **first-touch** (initial visit) and **last-touch** (most recent visit) values are stored. Only parameters that are present and non-empty are stored; missing ones are omitted rather than saved as empty values.
+
+### What counts as a touch
+
+A page view updates attribution only when it carries a new signal: a UTM parameter, a click ID, or a referrer from another site. Navigating between pages on your own site (including `www.` vs. bare domain) never overwrites stored attribution.
 
 ## Installation
 
@@ -53,12 +59,9 @@ The plugin JavaScript (`atmos-tracker.js`) automatically:
 
 ### Form Integration (Fluent Forms)
 
-When a Fluent Form is rendered on the page:
-
-1. Hidden fields are automatically added for all attribution parameters
-2. JavaScript fills these fields with the stored attribution data
-3. On form submission, the data is captured and stored with the entry
-4. Attribution data is saved in the form response JSON
+1. JavaScript adds hidden fields to forms on page load, and again at submit time (so popups and AJAX-loaded forms are covered). Fields are only added for parameters that have a value.
+2. On submission, the data is captured and stored with the entry. If the hidden fields are missing, the values are read from the cookie on the server instead.
+3. Attribution data is saved in the form response JSON
 
 ## Data Structure
 
@@ -70,7 +73,6 @@ When a Fluent Form is rendered on the page:
     "src": "facebook",
     "mdm": "social",
     "cmp": "spring-sale",
-    "gclid": null,
     "fbclid": "abc123",
     "referrer": "https://facebook.com",
     "ts": 1707696000
@@ -80,7 +82,6 @@ When a Fluent Form is rendered on the page:
     "mdm": "cpc",
     "cmp": "summer-sale",
     "gclid": "xyz789",
-    "fbclid": null,
     "referrer": "https://google.com",
     "ts": 1707782400
   }
@@ -94,6 +95,8 @@ Attribution data is stored with these field names:
 - `first_utm_source`, `last_utm_source`
 - `first_utm_medium`, `last_utm_medium`
 - `first_utm_campaign`, `last_utm_campaign`
+- `first_utm_term`, `last_utm_term`
+- `first_utm_content`, `last_utm_content`
 - `first_gclid`, `last_gclid`
 - `first_fbclid`, `last_fbclid`
 - `first_referrer`, `last_referrer`
@@ -115,6 +118,15 @@ To display attribution fields in the Fluent Forms entry view table:
 1. Edit your form in Fluent Forms
 2. Add hidden input fields with the exact field names listed above
 3. The values will automatically appear in the entry details
+
+### Reading Attribution in Other Plugins
+
+Use `atmos_get_attribution()` to read the cookie server-side. It returns only captured parameters, keyed by public name:
+
+```php
+$attribution = function_exists( 'atmos_get_attribution' ) ? atmos_get_attribution() : array();
+// array( 'first' => array( 'utm_source' => 'google', 'referrer' => '...' ), 'last' => array( ... ) )
+```
 
 ### Using in SmartCodes/Merge Tags
 
@@ -146,20 +158,20 @@ Google Click ID: {inputs.last_gclid}
 
 - **Name**: `_atmos_attribution`
 - **Duration**: 365 days
-- **Attributes**: `SameSite=Lax; Secure; Path=/`
+- **Attributes**: `SameSite=Lax; Path=/`, plus `Secure` on HTTPS pages
 - **Storage**: Also duplicated in localStorage for redundancy
 
 ### Browser Compatibility
 
 - Modern browsers with localStorage and cookie support
 - JavaScript must be enabled
-- Works with HTTPS (Secure cookie attribute)
+- Works on HTTPS and plain HTTP (e.g. local development)
 
 ### Performance
 
 - Lightweight JavaScript (~2KB)
 - Runs after page load (minimal performance impact)
-- Form field population delayed by 1 second to ensure forms are loaded
+- Form fields populated on page load and at submit time
 
 ## Debugging
 
@@ -181,7 +193,7 @@ The tracking relies on cookies and localStorage. Most ad blockers don't prevent 
 
 ### Q: Can I customize which parameters are tracked?
 
-Currently, the tracked parameters are hardcoded in the plugin. You can modify the `$params` array in `fluent-forms.php` to track additional parameters.
+Currently, the tracked parameters are hardcoded in the plugin. To add one, update both the `params` map in `js/atmos-tracker.js` and `atmos_get_param_map()` in `plugin.php`.
 
 ### Q: Does this work with other form plugins?
 
@@ -193,6 +205,15 @@ Currently, the plugin only has built-in integration with Fluent Forms. Integrati
 - **LocalStorage**: Persistent until manually cleared by the user or browser
 
 ## Changelog
+
+### Version 1.2
+- Internal navigation no longer overwrites last-touch attribution; only external referrers are recorded
+- Added `utm_term` and `utm_content` (stored only when present)
+- Forms are populated on load and at submit time, replacing the 1-second delay
+- Server-side cookie fallback when hidden fields aren't populated
+- Added `atmos_get_attribution()` for other plugins
+- Empty hidden fields are no longer printed into Fluent Forms markup
+- `Secure` cookie flag only set on HTTPS
 
 ### Version 1.1
 - Initial release with Fluent Forms integration
