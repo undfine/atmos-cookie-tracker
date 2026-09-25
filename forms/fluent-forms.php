@@ -36,6 +36,91 @@ class Fluent_Forms_Adapter {
         // Hidden fields are added client-side by atmos-tracker.js, only for captured params.
         // Inject data before Fluent Forms processes submission
         add_filter('fluentform/insert_response_data', array($this, 'ff_insert_response_data'), 10, 3);
+
+		// SmartCodes: {atmos_<field>} per value and {atmos_referrer_attribution} for the full URL
+		// all_editor_shortcodes feeds the form settings/integration pickers. Not editor_shortcodes:
+		// that's the form builder's list (default values), where no entry exists to resolve them.
+		add_filter( 'fluentform/all_editor_shortcodes', array( $this, 'ff_editor_smartcodes' ) );
+		foreach ( array_keys( $this->get_smartcodes() ) as $code ) {
+			add_filter( 'fluentform/shortcode_parser_callback_' . $code, function () use ( $code ) {
+				return $this->ff_smartcode_value( $code );
+			} );
+		}
+	}
+
+	/**
+	 * SmartCode name => editor label. Labels are compact ("Last: utm_source") to fit
+	 * the narrow SmartCode dropdown.
+	 *
+	 * @return array
+	 */
+	public function get_smartcodes() {
+		$codes = array( 'atmos_referrer_attribution' => 'Full URL' );
+		foreach ( array( 'last' => 'Last', 'first' => 'First' ) as $touch => $touch_label ) {
+			foreach ( atmos_get_param_map() as $param ) {
+				$codes[ 'atmos_' . atmos_get_field_name( $touch, $param ) ] = $touch_label . ': ' . $param;
+			}
+		}
+
+		return $codes;
+	}
+
+	/**
+	 * List the SmartCodes in the form settings pickers (feed field mapping, notifications, confirmations).
+	 *
+	 * @param array $groups SmartCode groups.
+	 * @return array
+	 */
+	public function ff_editor_smartcodes( $groups ) {
+		$shortcodes = array();
+		foreach ( $this->get_smartcodes() as $code => $label ) {
+			$shortcodes[ '{' . $code . '}' ] = $label;
+		}
+
+		$groups[] = array(
+			'title'      => 'Atmos Attribution',
+			'shortcodes' => $shortcodes,
+		);
+
+		return $groups;
+	}
+
+	/**
+	 * Resolve a SmartCode from the submission being parsed. Reads the entry data, not
+	 * the cookie: feeds usually run asynchronously, without the visitor's request.
+	 *
+	 * @param string $code SmartCode name without braces.
+	 * @return string '' when not captured.
+	 */
+	public function ff_smartcode_value( $code ) {
+		$parser = '\FluentForm\App\Services\FormBuilder\ShortCodeParser';
+
+		$attribution = atmos_get_attribution_from_fields( $parser::getInputs() );
+		if ( empty( $attribution ) ) {
+			try {
+				$entry = $parser::getEntry();
+				if ( $entry && ! empty( $entry->response ) ) {
+					$attribution = atmos_get_attribution_from_fields( json_decode( $entry->response, true ) );
+				}
+			} catch ( \Throwable $e ) {
+				// No entry in this context (e.g. editor preview)
+			}
+		}
+
+		if ( 'atmos_referrer_attribution' === $code ) {
+			return atmos_build_attribution_url( $attribution );
+		}
+
+		$field = substr( $code, strlen( 'atmos_' ) );
+		foreach ( array( 'first', 'last' ) as $touch ) {
+			foreach ( atmos_get_param_map() as $param ) {
+				if ( atmos_get_field_name( $touch, $param ) === $field ) {
+					return isset( $attribution[ $touch ][ $param ] ) ? $attribution[ $touch ][ $param ] : '';
+				}
+			}
+		}
+
+		return '';
 	}
 
 

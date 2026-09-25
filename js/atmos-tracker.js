@@ -1,5 +1,7 @@
 (function() {
     const KEY = '_atmos_attribution';
+    // Stored data format version. Data without it (or older) is cleaned up by migrate().
+    const VERSION = 2;
     const urlParams = new URLSearchParams(window.location.search);
 
     // Storage key => url param name. Form fields: last touch uses the plain
@@ -63,12 +65,11 @@
 
     const stripWww = (host) => host.replace(/^www\./i, '');
 
-    // Returns the referrer (origin + path only) if it comes from another site.
+    // Returns the URL (origin + path only) if it's an http(s) URL from another site.
     // Its query string and fragment belong to the referring site and are dropped.
-    const getExternalReferrer = () => {
-        if (!document.referrer) return null;
+    const cleanReferrer = (url) => {
         try {
-            const ref = new URL(document.referrer);
+            const ref = new URL(url);
             if (!/^https?:$/.test(ref.protocol)) return null;
             return stripWww(ref.hostname) === stripWww(window.location.hostname) ? null : ref.origin + ref.pathname;
         } catch (e) {
@@ -76,7 +77,56 @@
         }
     };
 
+    const getExternalReferrer = () => (document.referrer ? cleanReferrer(document.referrer) : null);
+
     const isValid = (val) => val && val !== 'null' && val !== 'undefined';
+
+    const save = (data) => {
+        try {
+            localStorage.setItem(KEY, JSON.stringify(data));
+        } catch (e) {
+            // Storage unavailable (private mode, quota); the cookie still carries the data
+        }
+        setCookie(KEY, JSON.stringify(data), 365);
+    };
+
+    const clear = () => {
+        try {
+            localStorage.removeItem(KEY);
+        } catch (e) {
+            // Storage unavailable
+        }
+        document.cookie = KEY + '=; max-age=0; path=/';
+    };
+
+    // One-time cleanup of data saved before VERSION 2. v1.x recorded internal page views
+    // as touches (own-site referrer, overwriting last and sometimes setting first) and
+    // kept referrer query strings. Own-site referrers are removed, touches left without
+    // a signal are dropped, and the rest is converted to the current format.
+    // Returns null when nothing valid remains.
+    const migrate = (data) => {
+        if (!data || data.v >= VERSION) return data;
+
+        const cleanTouch = (touch) => {
+            if (!touch || typeof touch !== 'object') return null;
+            const t = { ...touch };
+            if (t.referrer) {
+                const ref = cleanReferrer(t.referrer);
+                if (ref) t.referrer = ref;
+                else delete t.referrer;
+            }
+            return Object.keys(params).some(key => isValid(t[key])) ? t : null;
+        };
+
+        const first = cleanTouch(data.first);
+        const last = cleanTouch(data.last);
+        if (!first && !last) return null;
+
+        // A single remaining touch (or two identical ones) is stored as `last` only
+        const same = first && last && JSON.stringify(first) === JSON.stringify(last);
+        if (!last || same) return { v: VERSION, last: last || first };
+        return first ? { v: VERSION, first, last } : { v: VERSION, last };
+    };
 
     // Sets the field's value, creating a hidden input if needed. With no value, removes
     // inputs this script created so stale values from an earlier touch aren't submitted;
@@ -129,7 +179,9 @@
     }
 
     const now = Math.floor(Date.now() / 1000);
-    const data = getStored() || {};
+    const stored = getStored();
+    const data = migrate(stored) || {};
+    const needsMigration = !!stored && data !== stored;
     const referrerOnly = Object.keys(current).length === 1 && current.referrer;
     const protectedPaid = referrerOnly && isPaid(data.last) && now - (data.last.ts || 0) < PAID_PROTECTION_SECONDS;
 
@@ -140,13 +192,10 @@
         // (once; `first` is never replaced) to keep the cookie small
         if (!data.first && data.last) data.first = data.last;
         data.last = current;
-
-        try {
-            localStorage.setItem(KEY, JSON.stringify(data));
-        } catch (e) {
-            // Storage unavailable (private mode, quota); the cookie still carries the data
-        }
-        setCookie(KEY, JSON.stringify(data), 365);
+        data.v = VERSION;
+        save(data);
+    } else if (needsMigration) {
+        data.last ? save(data) : clear();
     }
 
     // 2. Fill forms present on load, and again at submit time so forms rendered

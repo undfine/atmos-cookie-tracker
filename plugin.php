@@ -110,6 +110,62 @@ function atmos_get_attribution() {
     return $result;
 }
 
+/**
+ * Rebuild attribution from submitted form fields (e.g. a stored entry), in the same
+ * shape as atmos_get_attribution(). Field names follow atmos_get_field_name().
+ *
+ * @param array $fields Submitted data keyed by field name.
+ * @return array
+ */
+function atmos_get_attribution_from_fields( $fields ) {
+    $result = array();
+    if ( ! is_array( $fields ) ) {
+        return $result;
+    }
+
+    foreach ( array( 'first', 'last' ) as $touch ) {
+        foreach ( atmos_get_param_map() as $param ) {
+            $key = atmos_get_field_name( $touch, $param );
+            if ( isset( $fields[ $key ] ) && is_scalar( $fields[ $key ] ) && '' !== (string) $fields[ $key ] ) {
+                $result[ $touch ][ $param ] = (string) $fields[ $key ];
+            }
+        }
+    }
+
+    return $result;
+}
+
+/**
+ * Attribution as a single URL: the last-touch referrer (or the site's home URL when
+ * there was none) with every other captured value as query params, named as form
+ * fields (utm_source, gclid, first_utm_source, first_referrer, ...).
+ *
+ * Example: https://www.google.com/?utm_source=google&utm_medium=cpc&gclid=abc&first_utm_source=meta
+ *
+ * @param array $attribution As returned by atmos_get_attribution() or atmos_get_attribution_from_fields().
+ * @return string '' when there is no attribution.
+ */
+function atmos_build_attribution_url( $attribution ) {
+    if ( empty( $attribution ) ) {
+        return '';
+    }
+
+    // Stored referrers are already reduced to origin + path, so a query can be appended
+    $base = ! empty( $attribution['last']['referrer'] ) ? $attribution['last']['referrer'] : home_url( '/' );
+
+    $query = array();
+    foreach ( array( 'last', 'first' ) as $touch ) {
+        foreach ( atmos_get_param_map() as $param ) {
+            if ( ( 'last' === $touch && 'referrer' === $param ) || empty( $attribution[ $touch ][ $param ] ) ) {
+                continue;
+            }
+            $query[ atmos_get_field_name( $touch, $param ) ] = $attribution[ $touch ][ $param ];
+        }
+    }
+
+    return $query ? $base . '?' . http_build_query( $query, '', '&', PHP_QUERY_RFC3986 ) : $base;
+}
+
 function atm_enqueue_tracking_script() {
     wp_enqueue_script(
         'atm-tracker',

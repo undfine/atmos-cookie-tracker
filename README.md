@@ -83,10 +83,11 @@ The plugin JavaScript (`atmos-tracker.js`) automatically:
 
 ### Stored Cookie/LocalStorage Format
 
-After a single touch, only `last` is stored (it is also the first touch):
+After a single touch, only `last` is stored (it is also the first touch). `v` is the storage format version:
 
 ```json
 {
+  "v": 2,
   "last": { "src": "google", "mdm": "cpc", "gclid": "xyz789", "ts": 1707696000 }
 }
 ```
@@ -95,6 +96,7 @@ When a second touch arrives, the existing `last` moves to `first` (this happens 
 
 ```json
 {
+  "v": 2,
   "first": {
     "src": "facebook",
     "mdm": "social",
@@ -152,7 +154,7 @@ To display attribution fields in the Fluent Forms entry view table:
 2. Add hidden input fields with the exact field names listed above
 3. The values will automatically appear in the entry details
 
-Hidden fields are also what make the values available in Fluent Forms integration feeds (CRM field mapping only lists fields defined in the form). For most CRMs, add the last-touch fields (`utm_source`, `utm_medium`, `utm_campaign`, ...) and map those.
+Hidden fields are only needed for entry columns and exports. Feeds, notifications and confirmations can use the Atmos SmartCodes below without adding any fields.
 
 ### Reading Attribution in Other Plugins
 
@@ -163,13 +165,36 @@ $attribution = function_exists( 'atmos_get_attribution' ) ? atmos_get_attributio
 // array( 'first' => array( 'utm_source' => 'google', 'referrer' => '...' ), 'last' => array( ... ) )
 ```
 
-### Using in SmartCodes/Merge Tags
+To work from a stored submission instead (e.g. in a feed or background job), rebuild it from the entry's fields and optionally turn it into the full attribution URL:
 
-Once hidden fields are added to your form, you can use attribution data in:
+```php
+$attribution = atmos_get_attribution_from_fields( $entry_data ); // same shape as above
+$url         = atmos_build_attribution_url( $attribution );      // same value as {atmos_referrer_attribution}
+```
 
-- **Email notifications**: `{inputs.utm_source}`, `{inputs.first_utm_campaign}`, etc.
-- **Confirmations**: Display the source that brought them to your site
-- **Integrations**: Pass attribution data to CRM systems, email marketing platforms, etc.
+### SmartCodes
+
+Every form gets an **Atmos Attribution** group in the SmartCode dropdown (feeds, notifications, confirmations). No hidden fields are needed. Values come from the submitted entry, so they work in asynchronous feeds too.
+
+| SmartCode | Value |
+|---|---|
+| `{atmos_referrer_attribution}` | Everything as one URL (see below) |
+| `{atmos_utm_source}`, `{atmos_utm_medium}`, `{atmos_utm_campaign}`, `{atmos_utm_term}`, `{atmos_utm_content}` | Last-touch UTMs |
+| `{atmos_gclid}`, `{atmos_gbraid}`, `{atmos_wbraid}`, `{atmos_msclkid}`, `{atmos_fbclid}` | Last-touch click IDs |
+| `{atmos_referrer}` | Last-touch referrer |
+| `{atmos_first_utm_source}` ... `{atmos_first_referrer}` | The same values for first touch |
+
+Values that weren't captured resolve to an empty string.
+
+#### Full attribution URL
+
+`{atmos_referrer_attribution}` starts with the last-touch referrer, or the site's home URL when there was none, and adds every other captured value as a query parameter, using the form field names:
+
+```
+https://www.google.com/?utm_source=google&utm_medium=cpc&gclid=abc123&first_utm_source=meta&first_utm_campaign=spring&first_referrer=https%3A%2F%2Fblog.example.com%2Fpost
+```
+
+First-touch values are always included, even when they match last touch, so the URL has the same structure for every lead.
 
 #### Example Email Template
 
@@ -180,12 +205,24 @@ Name: {inputs.name}
 Email: {inputs.email}
 
 Attribution:
-First Touch Source: {inputs.first_utm_source}
-First Touch Campaign: {inputs.first_utm_campaign}
-Last Touch Source: {inputs.utm_source}
-Last Touch Campaign: {inputs.utm_campaign}
-Google Click ID: {inputs.gclid}
+First Touch Source: {atmos_first_utm_source}
+First Touch Campaign: {atmos_first_utm_campaign}
+Last Touch Source: {atmos_utm_source}
+Last Touch Campaign: {atmos_utm_campaign}
+Google Click ID: {atmos_gclid}
+Full: {atmos_referrer_attribution}
 ```
+
+### Upgrading Stored Data
+
+Data saved before format version 2 (plugin 1.1 and early 1.2/1.3 builds) is cleaned up once, on the visitor's next page view:
+
+1. Referrers pointing to your own site are removed. v1.1 recorded internal page views as touches, overwriting `last` and sometimes setting `first` to your own page.
+2. Touches left with no signal (no UTMs, click IDs or external referrer) are dropped.
+3. External referrers are reduced to origin + path.
+4. The result is saved in the current format: two different touches stay as `first`/`last`, and a single remaining touch (or two identical ones) becomes `last`. If nothing valid remains, the storage is cleared.
+
+Last-touch values overwritten by the v1.1 bug can't be recovered.
 
 ## Technical Details
 
@@ -240,6 +277,11 @@ Currently, the plugin only has built-in integration with Fluent Forms. Integrati
 - **LocalStorage**: Persistent until manually cleared by the user or browser
 
 ## Changelog
+
+### Version 1.3.0
+- Stored data carries a format version (`v: 2`); data from earlier versions is cleaned up once (own-site referrers and empty touches removed, referrers stripped of query strings)
+- Fluent Forms SmartCodes: `{atmos_<field>}` for every captured value and `{atmos_referrer_attribution}` for the full attribution URL, listed under "Atmos Attribution" in the SmartCode dropdown
+- Added `atmos_get_attribution_from_fields()` and `atmos_build_attribution_url()` for other plugins
 
 ### Version 1.2
 - Only `last` is stored until a second touch arrives, then it moves to `first` (smaller cookie); readers treat a missing `first` as equal to `last`
