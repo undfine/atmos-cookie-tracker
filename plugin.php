@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Atmos Cookie Tracker
  * Description: Captures First & Last Touch UTMs and Ad IDs into LocalStorage/Cookies.
- * Version: 1.2
+ * Version: 1.3.0
  * Author: Dustin Wight
  */
 
@@ -85,6 +85,11 @@ function atmos_get_attribution() {
         return array();
     }
 
+    // Until a second touch arrives only `last` is stored; it is also the first touch
+    if ( empty( $raw['first'] ) && ! empty( $raw['last'] ) ) {
+        $raw['first'] = $raw['last'];
+    }
+
     $result = array();
     foreach ( array( 'first', 'last' ) as $touch ) {
         if ( empty( $raw[ $touch ] ) || ! is_array( $raw[ $touch ] ) ) {
@@ -108,9 +113,9 @@ function atmos_get_attribution() {
 function atm_enqueue_tracking_script() {
     wp_enqueue_script(
         'atm-tracker',
-        plugins_url( 'js/atmos-tracker.js', __FILE__ ),
+        plugins_url( 'js/atmos-tracker.min.js', __FILE__ ),
         array(),
-        '1.2',
+        '1.3.0',
         true // Load in footer for better performance
     );
 }

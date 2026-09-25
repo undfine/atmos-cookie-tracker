@@ -48,6 +48,8 @@ If either UTM is present, nothing is inferred, so tagged links are never altered
 
 A page view updates attribution only when it carries a new signal: a UTM parameter, a click ID, or a referrer from another site. Navigating between pages on your own site (including `www.` vs. bare domain) never overwrites stored attribution.
 
+**Paid protection (24 hours):** if the last touch was paid and is less than 24 hours old, a visit with only a referrer (e.g. an organic Google search) is ignored, so the ad keeps the credit. A touch counts as paid when `utm_medium` is `cpc`, `ppc` or starts with `paid`, or it has a Google or Microsoft Ads click ID. Tagged visits (UTMs or click IDs) always replace the last touch. The window is the `PAID_PROTECTION_SECONDS` constant in `js/atmos-tracker.js`.
+
 ## Installation
 
 1. Upload the `atmos-cookie-tracker` folder to `/wp-content/plugins/`
@@ -80,6 +82,16 @@ The plugin JavaScript (`atmos-tracker.js`) automatically:
 ## Data Structure
 
 ### Stored Cookie/LocalStorage Format
+
+After a single touch, only `last` is stored (it is also the first touch):
+
+```json
+{
+  "last": { "src": "google", "mdm": "cpc", "gclid": "xyz789", "ts": 1707696000 }
+}
+```
+
+When a second touch arrives, the existing `last` moves to `first` (this happens once; `first` is never replaced) and the new touch becomes `last`:
 
 ```json
 {
@@ -230,6 +242,8 @@ Currently, the plugin only has built-in integration with Fluent Forms. Integrati
 ## Changelog
 
 ### Version 1.2
+- Only `last` is stored until a second touch arrives, then it moves to `first` (smaller cookie); readers treat a missing `first` as equal to `last`
+- Paid protection: a referrer-only visit within 24 hours of a paid last touch doesn't replace it
 - Added `gbraid`, `wbraid` and `msclkid` click IDs
 - `utm_source`/`utm_medium` inferred from click IDs when neither is present (Google and Bing: `cpc`, Meta: `social`)
 - Last-touch fields renamed to plain parameter names (`utm_source`, `gclid`, ...); first touch keeps the `first_` prefix

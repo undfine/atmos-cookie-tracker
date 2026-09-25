@@ -29,6 +29,14 @@
         { ids: ['fbclid'], src: 'meta', mdm: 'social' },
     ];
 
+    // A referrer-only visit (e.g. organic search) within this window of a paid last
+    // touch doesn't replace it, so a quick return via search keeps the ad credit.
+    const PAID_PROTECTION_SECONDS = 24 * 60 * 60;
+
+    const isPaid = (touch) =>
+        /^(cpc|ppc|paid.*)$/i.test(touch?.mdm || '') ||
+        ['gclid', 'gbraid', 'wbraid', 'msclkid'].some(key => touch?.[key]);
+
     const setCookie = (name, value, days) => {
         const expires = new Date(Date.now() + days * 864e5).toUTCString();
         const secure = window.location.protocol === 'https:' ? '; Secure' : '';
@@ -90,8 +98,10 @@
     };
 
     const fillForm = (form, stored) => {
+        // Until a second touch arrives only `last` is stored; it is also the first touch
+        const first = stored.first || stored.last;
         for (const [key, param] of Object.entries(params)) {
-            setHiddenInput(form, `first_${param}`, stored.first?.[key]);
+            setHiddenInput(form, `first_${param}`, first?.[key]);
             setHiddenInput(form, param, stored.last?.[key]);
         }
     };
@@ -118,11 +128,17 @@
         }
     }
 
-    if (Object.keys(current).length > 0) {
-        current.ts = Math.floor(Date.now() / 1000);
+    const now = Math.floor(Date.now() / 1000);
+    const data = getStored() || {};
+    const referrerOnly = Object.keys(current).length === 1 && current.referrer;
+    const protectedPaid = referrerOnly && isPaid(data.last) && now - (data.last.ts || 0) < PAID_PROTECTION_SECONDS;
 
-        const data = getStored() || { first: null, last: null };
-        if (!data.first) data.first = current;
+    if (Object.keys(current).length > 0 && !protectedPaid) {
+        current.ts = now;
+
+        // Only `last` is stored until a second touch arrives, then it moves to `first`
+        // (once; `first` is never replaced) to keep the cookie small
+        if (!data.first && data.last) data.first = data.last;
         data.last = current;
 
         try {
