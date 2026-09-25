@@ -97,33 +97,39 @@ class Fluent_Forms_Adapter {
 			}
 		}
 
-		// Server-side fallback for when the JS didn't populate the form
-		$cookie_data = atmos_get_attribution();
-		$added_count = 0;
-
+		// Collect posted values (parsed data first, then direct POST)
+		$values = array();
 		foreach ( array( 'first', 'last' ) as $touch ) {
 			foreach ( atmos_get_param_map() as $param ) {
 				$key = atmos_get_field_name( $touch, $param );
-
-				// Check in parsed data first, then direct POST, then the cookie
-				$value = null;
 				if ( ! empty( $posted_data[ $key ] ) && is_scalar( $posted_data[ $key ] ) ) {
-					$value = $posted_data[ $key ];
+					$values[ $key ] = array( $param, $posted_data[ $key ] );
 				} elseif ( ! empty( $_POST[ $key ] ) && is_scalar( $_POST[ $key ] ) ) {
-					$value = wp_unslash( $_POST[ $key ] );
-				} elseif ( ! empty( $cookie_data[ $touch ][ $param ] ) ) {
-					$value = $cookie_data[ $touch ][ $param ];
+					$values[ $key ] = array( $param, wp_unslash( $_POST[ $key ] ) );
 				}
+			}
+		}
 
-				if ( $value ) {
-					$value = 'referrer' === $param ? atmos_clean_referrer( $value ) : sanitize_text_field( $value );
+		// Cookie fallback only when the JS posted nothing. Never mix sources, or
+		// stale cookie values fill gaps in a newer touch.
+		if ( empty( $values ) ) {
+			foreach ( atmos_get_attribution() as $touch => $params ) {
+				foreach ( $params as $param => $value ) {
+					$values[ atmos_get_field_name( $touch, $param ) ] = array( $param, $value );
 				}
+			}
+		}
 
-				// Only store parameters that were actually captured
-				if ( $value ) {
-					$formData[ $key ] = $value;
-					$added_count++;
-				}
+		$added_count = 0;
+
+		foreach ( $values as $key => $entry ) {
+			list( $param, $value ) = $entry;
+			$value = 'referrer' === $param ? atmos_clean_referrer( $value ) : sanitize_text_field( $value );
+
+			// Only store parameters that were actually captured
+			if ( $value ) {
+				$formData[ $key ] = $value;
+				$added_count++;
 			}
 		}
 		

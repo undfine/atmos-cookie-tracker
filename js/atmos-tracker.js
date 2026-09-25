@@ -57,12 +57,20 @@
 
     const isValid = (val) => val && val !== 'null' && val !== 'undefined';
 
-    const appendHiddenInput = (form, name, value) => {
+    // Sets the field's value, creating a hidden input if needed. With no value, removes
+    // inputs this script created so stale values from an earlier touch aren't submitted;
+    // fields defined in the form builder are left alone.
+    const setHiddenInput = (form, name, value) => {
         let input = form.querySelector(`input[name="${name}"]`);
+        if (!isValid(value)) {
+            if (input && input.dataset.atmos) input.remove();
+            return;
+        }
         if (!input) {
             input = document.createElement('input');
             input.type = 'hidden';
             input.name = name;
+            input.dataset.atmos = '1';
             form.appendChild(input);
         }
         input.value = value;
@@ -70,10 +78,8 @@
 
     const fillForm = (form, stored) => {
         for (const [key, param] of Object.entries(params)) {
-            const first = stored.first?.[key];
-            const last = stored.last?.[key];
-            if (isValid(first)) appendHiddenInput(form, `first_${param}`, first);
-            if (isValid(last)) appendHiddenInput(form, param, last);
+            setHiddenInput(form, `first_${param}`, stored.first?.[key]);
+            setHiddenInput(form, param, stored.last?.[key]);
         }
     };
 

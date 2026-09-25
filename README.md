@@ -218,7 +218,8 @@ Currently, the plugin only has built-in integration with Fluent Forms. Integrati
 - Internal navigation no longer overwrites last-touch attribution; only external referrers are recorded
 - Added `utm_term` and `utm_content` (stored only when present)
 - Forms are populated on load and at submit time, replacing the 1-second delay
-- Server-side cookie fallback when hidden fields aren't populated
+- Server-side cookie fallback when no attribution fields were posted (posted and cookie values are never mixed)
+- Hidden inputs added by the script are removed when their value is no longer stored
 - Added `atmos_get_attribution()` for other plugins
 - Empty hidden fields are no longer printed into Fluent Forms markup
 - `Secure` cookie flag only set on HTTPS
