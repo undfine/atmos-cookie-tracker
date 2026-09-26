@@ -37,7 +37,7 @@ class Fluent_Forms_Adapter {
         // Inject data before Fluent Forms processes submission
         add_filter('fluentform/insert_response_data', array($this, 'ff_insert_response_data'), 10, 3);
 
-		// SmartCodes: {atmos_<field>} per value and {atmos_referrer_attribution} for the full URL
+		// SmartCodes: {atmos_<field>} per value, plus URL forms (last, first, combined)
 		// all_editor_shortcodes feeds the form settings/integration pickers. Not editor_shortcodes:
 		// that's the form builder's list (default values), where no entry exists to resolve them.
 		add_filter( 'fluentform/all_editor_shortcodes', array( $this, 'ff_editor_smartcodes' ) );
@@ -55,7 +55,11 @@ class Fluent_Forms_Adapter {
 	 * @return array
 	 */
 	public function get_smartcodes() {
-		$codes = array( 'atmos_referrer_attribution' => 'Full URL' );
+		$codes = array(
+			'atmos_last_attribution'     => 'Last URL',
+			'atmos_first_attribution'    => 'First URL',
+			'atmos_combined_attribution' => 'Combined URL',
+		);
 		foreach ( array( 'last' => 'Last', 'first' => 'First' ) as $touch => $touch_label ) {
 			foreach ( atmos_get_param_map() as $param ) {
 				$codes[ 'atmos_' . atmos_get_field_name( $touch, $param ) ] = $touch_label . ': ' . $param;
@@ -107,8 +111,14 @@ class Fluent_Forms_Adapter {
 			}
 		}
 
-		if ( 'atmos_referrer_attribution' === $code ) {
-			return atmos_build_attribution_url( $attribution );
+		if ( 'atmos_combined_attribution' === $code ) {
+			return atmos_build_combined_url( $attribution );
+		}
+		if ( 'atmos_last_attribution' === $code ) {
+			return atmos_build_touch_url( $attribution, 'last' );
+		}
+		if ( 'atmos_first_attribution' === $code ) {
+			return atmos_build_touch_url( $attribution, 'first' );
 		}
 
 		$field = substr( $code, strlen( 'atmos_' ) );
@@ -209,7 +219,7 @@ class Fluent_Forms_Adapter {
 
 		foreach ( $values as $key => $entry ) {
 			list( $param, $value ) = $entry;
-			$value = 'referrer' === $param ? atmos_clean_referrer( $value ) : sanitize_text_field( $value );
+			$value = atmos_sanitize_value( $param, $value );
 
 			// Only store parameters that were actually captured
 			if ( $value ) {

@@ -31,6 +31,7 @@ function atmos_get_param_map() {
         'msclkid'  => 'msclkid',
         'fbclid'   => 'fbclid',
         'referrer' => 'referrer',
+        'lnd'      => 'landing',
     );
 }
 
@@ -68,6 +69,29 @@ function atmos_clean_referrer( $url ) {
 }
 
 /**
+ * Sanitize one attribution value. URLs (referrer, landing) are reduced to origin + path;
+ * a landing page stored as a path becomes a full URL on this site.
+ *
+ * @param string $param Public param name.
+ * @param mixed  $value Raw value.
+ * @return string '' when invalid.
+ */
+function atmos_sanitize_value( $param, $value ) {
+    if ( ! is_scalar( $value ) ) {
+        return '';
+    }
+    $value = (string) $value;
+
+    if ( 'landing' === $param && 0 === strpos( $value, '/' ) ) {
+        $value = home_url( $value );
+    }
+
+    return in_array( $param, array( 'referrer', 'landing' ), true )
+        ? atmos_clean_referrer( $value )
+        : sanitize_text_field( $value );
+}
+
+/**
  * Read attribution from the tracking cookie, keyed by public param name.
  * Only parameters that were actually captured are included.
  *
@@ -97,9 +121,7 @@ function atmos_get_attribution() {
         }
         foreach ( atmos_get_param_map() as $key => $param ) {
             if ( isset( $raw[ $touch ][ $key ] ) && is_scalar( $raw[ $touch ][ $key ] ) && '' !== $raw[ $touch ][ $key ] ) {
-                $value = 'referrer' === $param
-                    ? atmos_clean_referrer( $raw[ $touch ][ $key ] )
-                    : sanitize_text_field( $raw[ $touch ][ $key ] );
+                $value = atmos_sanitize_value( $param, $raw[ $touch ][ $key ] );
                 if ( '' !== $value ) {
                     $result[ $touch ][ $param ] = $value;
                 }
@@ -136,34 +158,91 @@ function atmos_get_attribution_from_fields( $fields ) {
 }
 
 /**
- * Attribution as a single URL: the last-touch referrer (or the site's home URL when
- * there was none) with every other captured value as query params, named as form
- * fields (utm_source, gclid, first_utm_source, first_referrer, ...).
+ * Whether a touch carries tracking params (UTMs or click IDs), as opposed to only a
+ * referrer (organic search, referral).
  *
- * Example: https://www.google.com/?utm_source=google&utm_medium=cpc&gclid=abc&first_utm_source=meta
+ * @param array $values One touch, keyed by public param name.
+ * @return bool
+ */
+function atmos_is_tagged( $values ) {
+    foreach ( array_diff( atmos_get_param_map(), array( 'referrer', 'landing' ) ) as $param ) {
+        if ( ! empty( $values[ $param ] ) ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Append params to one of this site's URLs. Params are only ever added to our own URLs,
+ * never to a referrer: e.g. google.com never had our UTMs.
+ *
+ * @param array $values One touch, keyed by public param name.
+ * @param array $query  Params to append.
+ * @return string
+ */
+function atmos_own_url( $values, $query ) {
+    // Landing page is stored as origin + path, so a query can be appended
+    $base = ! empty( $values['landing'] ) ? $values['landing'] : home_url( '/' );
+    return $query ? $base . '?' . http_build_query( $query, '', '&', PHP_QUERY_RFC3986 ) : $base;
+}
+
+/**
+ * Both touches combined as a single URL: the last-touch landing page (else the site's
+ * home URL) with every other captured value as query params, named as form fields
+ * (utm_source, gclid, referrer, first_utm_source, first_referrer, ...). A data bundle
+ * rather than a real link; for a CRM Referrer use atmos_build_touch_url().
+ *
+ * Example: https://example.com/spring/?utm_source=google&utm_medium=cpc&gclid=abc&referrer=https%3A%2F%2Fwww.google.com%2F&first_utm_source=meta
  *
  * @param array $attribution As returned by atmos_get_attribution() or atmos_get_attribution_from_fields().
  * @return string '' when there is no attribution.
  */
-function atmos_build_attribution_url( $attribution ) {
+function atmos_build_combined_url( $attribution ) {
     if ( empty( $attribution ) ) {
         return '';
     }
 
-    // Stored referrers are already reduced to origin + path, so a query can be appended
-    $base = ! empty( $attribution['last']['referrer'] ) ? $attribution['last']['referrer'] : home_url( '/' );
-
     $query = array();
     foreach ( array( 'last', 'first' ) as $touch ) {
         foreach ( atmos_get_param_map() as $param ) {
-            if ( ( 'last' === $touch && 'referrer' === $param ) || empty( $attribution[ $touch ][ $param ] ) ) {
+            if ( ( 'last' === $touch && 'landing' === $param ) || empty( $attribution[ $touch ][ $param ] ) ) {
                 continue;
             }
             $query[ atmos_get_field_name( $touch, $param ) ] = $attribution[ $touch ][ $param ];
         }
     }
 
-    return $query ? $base . '?' . http_build_query( $query, '', '&', PHP_QUERY_RFC3986 ) : $base;
+    return atmos_own_url( isset( $attribution['last'] ) ? $attribution['last'] : array(), $query );
+}
+
+/**
+ * One touch as the real URL behind it, using plain param names for either touch:
+ * - Tagged (UTMs/click IDs): the link the visitor clicked, i.e. the landing page with its
+ *   params, plus the referrer as a `referrer` param when there was one.
+ * - Untagged: the referrer itself, unchanged (e.g. https://www.google.com/).
+ * Suitable as a CRM Referrer ("referring site or pay-per-click source").
+ *
+ * Example: https://example.com/spring/?utm_source=google&utm_medium=cpc&gclid=abc&referrer=https%3A%2F%2Fwww.google.com%2F
+ *
+ * @param array  $attribution As returned by atmos_get_attribution() or atmos_get_attribution_from_fields().
+ * @param string $touch       'first' or 'last'.
+ * @return string '' when that touch wasn't captured.
+ */
+function atmos_build_touch_url( $attribution, $touch ) {
+    if ( empty( $attribution[ $touch ] ) ) {
+        return '';
+    }
+
+    $values = $attribution[ $touch ];
+    if ( ! atmos_is_tagged( $values ) && ! empty( $values['referrer'] ) ) {
+        return $values['referrer'];
+    }
+
+    $query = $values;
+    unset( $query['landing'] );
+
+    return atmos_own_url( $values, $query );
 }
 
 function atm_enqueue_tracking_script() {

@@ -29,6 +29,7 @@ The plugin tracks the following attribution data:
 - `msclkid` - Microsoft (Bing) Ads click ID
 - `fbclid` - Meta (Facebook/Instagram) click ID
 - `referrer` - Referring URL, external sites only, reduced to origin + path (the referring site's query string and fragment are dropped)
+- `landing` - The page the touch arrived on (origin + path). Recorded with every touch but never creates one; stored as a path and submitted as a full URL
 
 Both **first-touch** (initial visit) and **last-touch** (most recent visit) values are stored. Only parameters that are present and non-empty are stored; missing ones are omitted rather than saved as empty values.
 
@@ -133,6 +134,7 @@ Last touch uses the plain parameter names, since most CRMs accept a single set a
 | `msclkid` | `first_msclkid` |
 | `fbclid` | `first_fbclid` |
 | `referrer` | `first_referrer` |
+| `landing` | `first_landing` |
 
 Only parameters that were captured are submitted.
 
@@ -169,7 +171,8 @@ To work from a stored submission instead (e.g. in a feed or background job), reb
 
 ```php
 $attribution = atmos_get_attribution_from_fields( $entry_data ); // same shape as above
-$url         = atmos_build_attribution_url( $attribution );      // same value as {atmos_referrer_attribution}
+$last_url    = atmos_build_touch_url( $attribution, 'last' );    // same value as {atmos_last_attribution}
+$combined    = atmos_build_combined_url( $attribution );         // same value as {atmos_combined_attribution}
 ```
 
 ### SmartCodes
@@ -178,23 +181,35 @@ Every form gets an **Atmos Attribution** group in the SmartCode dropdown (feeds,
 
 | SmartCode | Value |
 |---|---|
-| `{atmos_referrer_attribution}` | Everything as one URL (see below) |
+| `{atmos_last_attribution}` | Last touch as a real URL (see below). Use this as a CRM Referrer |
+| `{atmos_first_attribution}` | First touch, same format, e.g. for a CRM custom field |
+| `{atmos_combined_attribution}` | Both touches in one URL (see below) |
 | `{atmos_utm_source}`, `{atmos_utm_medium}`, `{atmos_utm_campaign}`, `{atmos_utm_term}`, `{atmos_utm_content}` | Last-touch UTMs |
 | `{atmos_gclid}`, `{atmos_gbraid}`, `{atmos_wbraid}`, `{atmos_msclkid}`, `{atmos_fbclid}` | Last-touch click IDs |
 | `{atmos_referrer}` | Last-touch referrer |
-| `{atmos_first_utm_source}` ... `{atmos_first_referrer}` | The same values for first touch |
+| `{atmos_landing}` | Last-touch landing page |
+| `{atmos_first_utm_source}` ... `{atmos_first_landing}` | The same values for first touch |
 
-Values that weren't captured resolve to an empty string.
+Values that weren't captured resolve to an empty string. For the page a form was submitted on (the converting page), use Fluent Forms' own `{embed_post.permalink}`.
 
-#### Full attribution URL
+#### Attribution URLs
 
-`{atmos_referrer_attribution}` starts with the last-touch referrer, or the site's home URL when there was none, and adds every other captured value as a query parameter, using the form field names:
+Params are only ever added to your own URLs, never to a referrer (google.com never had your UTMs). `{atmos_last_attribution}` and `{atmos_first_attribution}` return the real URL behind a touch, using plain param names:
+
+| Touch | URL |
+|---|---|
+| Tagged (UTMs or click IDs) | The link the visitor clicked: landing page + its params, plus `referrer` when there was one |
+| Untagged (organic search, referral) | The referrer itself, unchanged |
 
 ```
-https://www.google.com/?utm_source=google&utm_medium=cpc&gclid=abc123&first_utm_source=meta&first_utm_campaign=spring&first_referrer=https%3A%2F%2Fblog.example.com%2Fpost
+https://example.com/spring-open-house/?utm_source=google&utm_medium=cpc&gclid=abc&referrer=https%3A%2F%2Fwww.google.com%2F
+https://example.com/spring-open-house/?utm_source=newsletter&utm_medium=email
+https://www.google.com/
 ```
 
-First-touch values are always included, even when they match last touch, so the URL has the same structure for every lead.
+This matches a CRM Referrer ("referring site or pay-per-click source"). Older entries without a landing page use the home URL as the base.
+
+`{atmos_combined_attribution}` bundles both touches: the last-touch landing page with every other value as a param, named as form fields (`referrer`, `first_utm_source`, `first_referrer`, `first_landing`, ...). First-touch values are always included, even when they match last touch, so the structure is the same for every lead. It's a data bundle rather than a real link, so prefer `{atmos_last_attribution}` for a Referrer field.
 
 #### Example Email Template
 
@@ -210,7 +225,7 @@ First Touch Campaign: {atmos_first_utm_campaign}
 Last Touch Source: {atmos_utm_source}
 Last Touch Campaign: {atmos_utm_campaign}
 Google Click ID: {atmos_gclid}
-Full: {atmos_referrer_attribution}
+Last touch URL: {atmos_last_attribution}
 ```
 
 ### Upgrading Stored Data
@@ -279,9 +294,11 @@ Currently, the plugin only has built-in integration with Fluent Forms. Integrati
 ## Changelog
 
 ### Version 1.3.0
+- Landing page recorded with each touch (`landing`, `first_landing`, `{atmos_landing}`, `{atmos_first_landing}`); attribution URLs use it as their base, params are never added to a referrer
 - Stored data carries a format version (`v: 2`); data from earlier versions is cleaned up once (own-site referrers and empty touches removed, referrers stripped of query strings)
-- Fluent Forms SmartCodes: `{atmos_<field>}` for every captured value and `{atmos_referrer_attribution}` for the full attribution URL, listed under "Atmos Attribution" in the SmartCode dropdown
-- Added `atmos_get_attribution_from_fields()` and `atmos_build_attribution_url()` for other plugins
+- Fluent Forms SmartCodes: `{atmos_<field>}` for every captured value and `{atmos_combined_attribution}` for both touches in one URL, listed under "Atmos Attribution" in the SmartCode dropdown
+- Added `atmos_get_attribution_from_fields()`, `atmos_build_combined_url()` and `atmos_build_touch_url()` for other plugins
+- `{atmos_last_attribution}` and `{atmos_first_attribution}` SmartCodes: one touch as its real URL (clicked link for tagged touches, the referrer itself for untagged ones)
 
 ### Version 1.2
 - Only `last` is stored until a second touch arrives, then it moves to `first` (smaller cookie); readers treat a missing `first` as equal to `last`

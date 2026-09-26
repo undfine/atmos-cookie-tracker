@@ -19,7 +19,12 @@
         msclkid: 'msclkid',
         fbclid: 'fbclid',
         referrer: 'referrer',
+        lnd: 'landing',
     };
+
+    // Keys that make a page view a touch. The landing page (lnd) is recorded with a
+    // touch but never creates one: every page view has a path.
+    const signalKeys = Object.keys(params).filter(key => key !== 'lnd');
 
     // Click ID url params => inferred source/medium, applied only when the URL has
     // neither utm_source nor utm_medium. First match wins. gad_source isn't stored,
@@ -115,7 +120,7 @@
                 if (ref) t.referrer = ref;
                 else delete t.referrer;
             }
-            return Object.keys(params).some(key => isValid(t[key])) ? t : null;
+            return signalKeys.some(key => isValid(t[key])) ? t : null;
         };
 
         const first = cleanTouch(data.first);
@@ -147,12 +152,16 @@
         input.value = value;
     };
 
+    // Stored value => form value. The landing page is stored as a path to keep the
+    // cookie small and submitted as a full URL.
+    const formValue = (key, val) => (key === 'lnd' && isValid(val) ? window.location.origin + val : val);
+
     const fillForm = (form, stored) => {
         // Until a second touch arrives only `last` is stored; it is also the first touch
         const first = stored.first || stored.last;
         for (const [key, param] of Object.entries(params)) {
-            setHiddenInput(form, `first_${param}`, first?.[key]);
-            setHiddenInput(form, param, stored.last?.[key]);
+            setHiddenInput(form, `first_${param}`, formValue(key, first?.[key]));
+            setHiddenInput(form, param, formValue(key, stored.last?.[key]));
         }
     };
 
@@ -165,8 +174,8 @@
     // 1. Capture signals. Internal navigation (same-site referrer, no campaign params)
     // is not a new touch, so it never overwrites stored attribution.
     const current = {};
-    for (const [key, param] of Object.entries(params)) {
-        const val = key === 'referrer' ? getExternalReferrer() : urlParams.get(param);
+    for (const key of signalKeys) {
+        const val = key === 'referrer' ? getExternalReferrer() : urlParams.get(params[key]);
         if (isValid(val)) current[key] = val;
     }
 
@@ -186,6 +195,8 @@
     const protectedPaid = referrerOnly && isPaid(data.last) && now - (data.last.ts || 0) < PAID_PROTECTION_SECONDS;
 
     if (Object.keys(current).length > 0 && !protectedPaid) {
+        // Landing page path only; its query string is already captured as UTMs/click IDs
+        current.lnd = window.location.pathname;
         current.ts = now;
 
         // Only `last` is stored until a second touch arrives, then it moves to `first`
