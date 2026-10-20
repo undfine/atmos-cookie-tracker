@@ -292,6 +292,14 @@ Currently, the plugin only has built-in integration with Fluent Forms. Integrati
 - **LocalStorage**: Persistent until manually cleared by the user or browser
 
 ## Changelog
+### Version 1.3.1
+- Added hook for Fluent Forms submissions to check if it was marked as spam and return `is_spam = true` in the response data for further processing (exclude from conversions events, etc...)
+  
+  Example usage: `jQuery(document).on('fluentform_submission_success', function( e, d ) {
+	  var r = d && d.response && d.response.data && d.response.data.result;
+	  if (r && r.is_spam) return; // SPAM! = do not count as conversion 
+  });`
+
 
 ### Version 1.3.0
 - Landing page recorded with each touch (`landing`, `first_landing`, `{atmos_landing}`, `{atmos_first_landing}`); attribution URLs use it as their base, params are never added to a referrer

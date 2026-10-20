@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Fluent_Forms_Adapter {
 
-    	/**
+    /**
 	 * Custom logger that always works.
 	 */
 	private function log( $message ) {
@@ -46,6 +46,32 @@ class Fluent_Forms_Adapter {
 				return $this->ff_smartcode_value( $code );
 			} );
 		}
+
+		
+		// Insert spam status into the AJAX submission confirmation response.
+		add_filter('fluentform/submission_confirmation', array($this, 'ff_insert_spam_status'), 99, 4);
+
+	}
+
+
+	/** 
+	 * Flag spam entries in the AJAX submit response (response.data.result.is_spam) so
+	 * front-end tracking can skip conversion events for them.
+	 * Uses the $insertId passed to the filter rather than fluentform/submission_inserted,
+	 * because that action never fires when Akismet/CleanTalk is set to
+	 * "mark as spam and skip processing".
+	 */
+	public function ff_insert_spam_status( $returnData, $form, $confirmation, $insertId ) {
+		global $wpdb;
+		$status = $insertId ? $wpdb->get_var($wpdb->prepare(
+			"SELECT status FROM {$wpdb->prefix}fluentform_submissions WHERE id = %d", $insertId
+		)) : null;
+
+		//use Fluent Forms model instead of direct SQL query if preferred
+		// $status = $insertId ? \FluentForm\App\Models\Submission::where('id', $insertId)->value('status') : null;
+
+		$returnData['is_spam'] = ($status === 'spam');
+		return $returnData;
 	}
 
 	/**

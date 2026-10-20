@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Atmos Cookie Tracker
  * Description: Captures First & Last Touch UTMs and Ad IDs into LocalStorage/Cookies.
- * Version: 1.3.0
+ * Version: 1.3.1
  * Author: Dustin Wight
  */
 
