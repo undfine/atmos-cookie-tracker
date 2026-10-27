@@ -19,13 +19,13 @@ class Fluent_Forms_Adapter {
 	private function log( $message ) {
         return; // Disable logging for now
 
-        $log_file = dirname(__FILE__) . '/atmos-debug.log';
+        $log_file = dirname(__FILE__) . '/utmost-debug.log';
 		$timestamp = date('Y-m-d H:i:s');
 		file_put_contents($log_file, "[{$timestamp}] {$message}\n", FILE_APPEND);
 		
 		// Also try error_log if WP_DEBUG is enabled
 		if ( defined('WP_DEBUG') && WP_DEBUG ) {
-			// error_log('ATMOS: ' . $message);
+			// error_log('UTMOST: ' . $message);
 		}
 	}
 
@@ -33,11 +33,11 @@ class Fluent_Forms_Adapter {
 	 * Register hooks.
 	 */
 	public function __construct(){
-        // Hidden fields are added client-side by atmos-tracker.js, only for captured params.
+        // Hidden fields are added client-side by utmost-attribution.js, only for captured params.
         // Inject data before Fluent Forms processes submission
         add_filter('fluentform/insert_response_data', array($this, 'ff_insert_response_data'), 10, 3);
 
-		// SmartCodes: {atmos_<field>} per value, plus URL forms (last, first, combined)
+		// SmartCodes: {utmost_<field>} per value, plus URL forms (last, first, combined)
 		// all_editor_shortcodes feeds the form settings/integration pickers. Not editor_shortcodes:
 		// that's the form builder's list (default values), where no entry exists to resolve them.
 		add_filter( 'fluentform/all_editor_shortcodes', array( $this, 'ff_editor_smartcodes' ) );
@@ -82,13 +82,13 @@ class Fluent_Forms_Adapter {
 	 */
 	public function get_smartcodes() {
 		$codes = array(
-			'atmos_last_attribution'     => 'Last URL',
-			'atmos_first_attribution'    => 'First URL',
-			'atmos_combined_attribution' => 'Combined URL',
+			'utmost_last_attribution'     => 'Last URL',
+			'utmost_first_attribution'    => 'First URL',
+			'utmost_combined_attribution' => 'Combined URL',
 		);
 		foreach ( array( 'last' => 'Last', 'first' => 'First' ) as $touch => $touch_label ) {
-			foreach ( atmos_get_param_map() as $param ) {
-				$codes[ 'atmos_' . atmos_get_field_name( $touch, $param ) ] = $touch_label . ': ' . $param;
+			foreach ( utmost_get_param_map() as $param ) {
+				$codes[ 'utmost_' . utmost_get_field_name( $touch, $param ) ] = $touch_label . ': ' . $param;
 			}
 		}
 
@@ -108,7 +108,7 @@ class Fluent_Forms_Adapter {
 		}
 
 		$groups[] = array(
-			'title'      => 'Atmos Attribution',
+			'title'      => 'UTMost Attribution',
 			'shortcodes' => $shortcodes,
 		);
 
@@ -125,32 +125,32 @@ class Fluent_Forms_Adapter {
 	public function ff_smartcode_value( $code ) {
 		$parser = '\FluentForm\App\Services\FormBuilder\ShortCodeParser';
 
-		$attribution = atmos_get_attribution_from_fields( $parser::getInputs() );
+		$attribution = utmost_get_attribution_from_fields( $parser::getInputs() );
 		if ( empty( $attribution ) ) {
 			try {
 				$entry = $parser::getEntry();
 				if ( $entry && ! empty( $entry->response ) ) {
-					$attribution = atmos_get_attribution_from_fields( json_decode( $entry->response, true ) );
+					$attribution = utmost_get_attribution_from_fields( json_decode( $entry->response, true ) );
 				}
 			} catch ( \Throwable $e ) {
 				// No entry in this context (e.g. editor preview)
 			}
 		}
 
-		if ( 'atmos_combined_attribution' === $code ) {
-			return atmos_build_combined_url( $attribution );
+		if ( 'utmost_combined_attribution' === $code ) {
+			return utmost_build_combined_url( $attribution );
 		}
-		if ( 'atmos_last_attribution' === $code ) {
-			return atmos_build_touch_url( $attribution, 'last' );
+		if ( 'utmost_last_attribution' === $code ) {
+			return utmost_build_touch_url( $attribution, 'last' );
 		}
-		if ( 'atmos_first_attribution' === $code ) {
-			return atmos_build_touch_url( $attribution, 'first' );
+		if ( 'utmost_first_attribution' === $code ) {
+			return utmost_build_touch_url( $attribution, 'first' );
 		}
 
-		$field = substr( $code, strlen( 'atmos_' ) );
+		$field = substr( $code, strlen( 'utmost_' ) );
 		foreach ( array( 'first', 'last' ) as $touch ) {
-			foreach ( atmos_get_param_map() as $param ) {
-				if ( atmos_get_field_name( $touch, $param ) === $field ) {
+			foreach ( utmost_get_param_map() as $param ) {
+				if ( utmost_get_field_name( $touch, $param ) === $field ) {
 					return isset( $attribution[ $touch ][ $param ] ) ? $attribution[ $touch ][ $param ] : '';
 				}
 			}
@@ -168,9 +168,9 @@ class Fluent_Forms_Adapter {
 	public function get_field_mapping() {
 		
 		$keys = array();
-		foreach ( atmos_get_param_map() as $param ) {
-			$keys[] = atmos_get_field_name( 'first', $param );
-			$keys[] = atmos_get_field_name( 'last', $param );
+		foreach ( utmost_get_param_map() as $param ) {
+			$keys[] = utmost_get_field_name( 'first', $param );
+			$keys[] = utmost_get_field_name( 'last', $param );
 		}
 
 		return $keys;
@@ -221,8 +221,8 @@ class Fluent_Forms_Adapter {
 		// Collect posted values (parsed data first, then direct POST)
 		$values = array();
 		foreach ( array( 'first', 'last' ) as $touch ) {
-			foreach ( atmos_get_param_map() as $param ) {
-				$key = atmos_get_field_name( $touch, $param );
+			foreach ( utmost_get_param_map() as $param ) {
+				$key = utmost_get_field_name( $touch, $param );
 				if ( ! empty( $posted_data[ $key ] ) && is_scalar( $posted_data[ $key ] ) ) {
 					$values[ $key ] = array( $param, $posted_data[ $key ] );
 				} elseif ( ! empty( $_POST[ $key ] ) && is_scalar( $_POST[ $key ] ) ) {
@@ -234,9 +234,9 @@ class Fluent_Forms_Adapter {
 		// Cookie fallback only when the JS posted nothing. Never mix sources, or
 		// stale cookie values fill gaps in a newer touch.
 		if ( empty( $values ) ) {
-			foreach ( atmos_get_attribution() as $touch => $params ) {
+			foreach ( utmost_get_attribution() as $touch => $params ) {
 				foreach ( $params as $param => $value ) {
-					$values[ atmos_get_field_name( $touch, $param ) ] = array( $param, $value );
+					$values[ utmost_get_field_name( $touch, $param ) ] = array( $param, $value );
 				}
 			}
 		}
@@ -245,7 +245,7 @@ class Fluent_Forms_Adapter {
 
 		foreach ( $values as $key => $entry ) {
 			list( $param, $value ) = $entry;
-			$value = atmos_sanitize_value( $param, $value );
+			$value = utmost_sanitize_value( $param, $value );
 
 			// Only store parameters that were actually captured
 			if ( $value ) {

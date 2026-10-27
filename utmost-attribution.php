@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: Atmos Cookie Tracker
- * Description: Captures First & Last Touch UTMs and Ad IDs into LocalStorage/Cookies.
- * Version: 1.3.1
+ * Plugin Name: UTMost Attribution
+ * Description: Captures first & last touch UTMs, click IDs, referrers and landing pages into localStorage/cookies for use in forms and CRM integrations.
+ * Version: 1.4.0
  * Author: Dustin Wight
  */
 
@@ -10,15 +10,19 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit; // Exit if accessed directly
 }
 
-define( 'ATMOS_COOKIE_KEY', '_atmos_attribution' );
+define( 'UTMOST_COOKIE_KEY', '_utmost_attribution' );
+// Cookie/localStorage name used before the plugin was renamed from Atmos Cookie
+// Tracker. Read as a fallback only; the JS migrates visitors to UTMOST_COOKIE_KEY
+// on their next page view, so this can be removed once no visitor still has it.
+define( 'UTMOST_LEGACY_COOKIE_KEY', '_atmos_attribution' );
 
 /**
  * Storage key (as used in the cookie JSON) => public param name.
- * Must match the `params` map in js/atmos-tracker.js.
+ * Must match the `params` map in js/utmost-attribution.js.
  *
  * @return array
  */
-function atmos_get_param_map() {
+function utmost_get_param_map() {
     return array(
         'src'      => 'utm_source',
         'mdm'      => 'utm_medium',
@@ -38,13 +42,13 @@ function atmos_get_param_map() {
 /**
  * Form field name for a touch/param pair. Last touch uses the plain param name
  * (e.g. utm_source) so it works with CRMs expecting a single set; first touch is
- * prefixed (first_utm_source). Must match fillForm() in js/atmos-tracker.js.
+ * prefixed (first_utm_source). Must match fillForm() in js/utmost-attribution.js.
  *
  * @param string $touch 'first' or 'last'.
  * @param string $param Public param name, e.g. 'utm_source'.
  * @return string
  */
-function atmos_get_field_name( $touch, $param ) {
+function utmost_get_field_name( $touch, $param ) {
     return 'last' === $touch ? $param : $touch . '_' . $param;
 }
 
@@ -55,7 +59,7 @@ function atmos_get_field_name( $touch, $param ) {
  * @param string $url Referrer URL.
  * @return string Cleaned URL, or '' if not a valid http(s) URL.
  */
-function atmos_clean_referrer( $url ) {
+function utmost_clean_referrer( $url ) {
     $parts = wp_parse_url( $url );
     if ( empty( $parts['scheme'] ) || empty( $parts['host'] ) || ! in_array( strtolower( $parts['scheme'] ), array( 'http', 'https' ), true ) ) {
         return '';
@@ -76,7 +80,7 @@ function atmos_clean_referrer( $url ) {
  * @param mixed  $value Raw value.
  * @return string '' when invalid.
  */
-function atmos_sanitize_value( $param, $value ) {
+function utmost_sanitize_value( $param, $value ) {
     if ( ! is_scalar( $value ) ) {
         return '';
     }
@@ -87,7 +91,7 @@ function atmos_sanitize_value( $param, $value ) {
     }
 
     return in_array( $param, array( 'referrer', 'landing' ), true )
-        ? atmos_clean_referrer( $value )
+        ? utmost_clean_referrer( $value )
         : sanitize_text_field( $value );
 }
 
@@ -99,12 +103,20 @@ function atmos_sanitize_value( $param, $value ) {
  *
  * @return array Empty array when no attribution is stored.
  */
-function atmos_get_attribution() {
-    if ( empty( $_COOKIE[ ATMOS_COOKIE_KEY ] ) ) {
+function utmost_get_attribution() {
+    // The current cookie, else the pre-rename one (see UTMOST_LEGACY_COOKIE_KEY)
+    $cookie_json = '';
+    if ( ! empty( $_COOKIE[ UTMOST_COOKIE_KEY ] ) ) {
+        $cookie_json = $_COOKIE[ UTMOST_COOKIE_KEY ];
+    } elseif ( ! empty( $_COOKIE[ UTMOST_LEGACY_COOKIE_KEY ] ) ) {
+        $cookie_json = $_COOKIE[ UTMOST_LEGACY_COOKIE_KEY ];
+    }
+
+    if ( empty( $cookie_json ) ) {
         return array();
     }
 
-    $raw = json_decode( wp_unslash( $_COOKIE[ ATMOS_COOKIE_KEY ] ), true );
+    $raw = json_decode( wp_unslash( $cookie_json ), true );
     if ( ! is_array( $raw ) ) {
         return array();
     }
@@ -119,9 +131,9 @@ function atmos_get_attribution() {
         if ( empty( $raw[ $touch ] ) || ! is_array( $raw[ $touch ] ) ) {
             continue;
         }
-        foreach ( atmos_get_param_map() as $key => $param ) {
+        foreach ( utmost_get_param_map() as $key => $param ) {
             if ( isset( $raw[ $touch ][ $key ] ) && is_scalar( $raw[ $touch ][ $key ] ) && '' !== $raw[ $touch ][ $key ] ) {
-                $value = atmos_sanitize_value( $param, $raw[ $touch ][ $key ] );
+                $value = utmost_sanitize_value( $param, $raw[ $touch ][ $key ] );
                 if ( '' !== $value ) {
                     $result[ $touch ][ $param ] = $value;
                 }
@@ -134,20 +146,20 @@ function atmos_get_attribution() {
 
 /**
  * Rebuild attribution from submitted form fields (e.g. a stored entry), in the same
- * shape as atmos_get_attribution(). Field names follow atmos_get_field_name().
+ * shape as utmost_get_attribution(). Field names follow utmost_get_field_name().
  *
  * @param array $fields Submitted data keyed by field name.
  * @return array
  */
-function atmos_get_attribution_from_fields( $fields ) {
+function utmost_get_attribution_from_fields( $fields ) {
     $result = array();
     if ( ! is_array( $fields ) ) {
         return $result;
     }
 
     foreach ( array( 'first', 'last' ) as $touch ) {
-        foreach ( atmos_get_param_map() as $param ) {
-            $key = atmos_get_field_name( $touch, $param );
+        foreach ( utmost_get_param_map() as $param ) {
+            $key = utmost_get_field_name( $touch, $param );
             if ( isset( $fields[ $key ] ) && is_scalar( $fields[ $key ] ) && '' !== (string) $fields[ $key ] ) {
                 $result[ $touch ][ $param ] = (string) $fields[ $key ];
             }
@@ -164,8 +176,8 @@ function atmos_get_attribution_from_fields( $fields ) {
  * @param array $values One touch, keyed by public param name.
  * @return bool
  */
-function atmos_is_tagged( $values ) {
-    foreach ( array_diff( atmos_get_param_map(), array( 'referrer', 'landing' ) ) as $param ) {
+function utmost_is_tagged( $values ) {
+    foreach ( array_diff( utmost_get_param_map(), array( 'referrer', 'landing' ) ) as $param ) {
         if ( ! empty( $values[ $param ] ) ) {
             return true;
         }
@@ -181,7 +193,7 @@ function atmos_is_tagged( $values ) {
  * @param array $query  Params to append.
  * @return string
  */
-function atmos_own_url( $values, $query ) {
+function utmost_own_url( $values, $query ) {
     // Landing page is stored as origin + path, so a query can be appended
     $base = ! empty( $values['landing'] ) ? $values['landing'] : home_url( '/' );
     return $query ? $base . '?' . http_build_query( $query, '', '&', PHP_QUERY_RFC3986 ) : $base;
@@ -191,29 +203,29 @@ function atmos_own_url( $values, $query ) {
  * Both touches combined as a single URL: the last-touch landing page (else the site's
  * home URL) with every other captured value as query params, named as form fields
  * (utm_source, gclid, referrer, first_utm_source, first_referrer, ...). A data bundle
- * rather than a real link; for a CRM Referrer use atmos_build_touch_url().
+ * rather than a real link; for a CRM Referrer use utmost_build_touch_url().
  *
  * Example: https://example.com/spring/?utm_source=google&utm_medium=cpc&gclid=abc&referrer=https%3A%2F%2Fwww.google.com%2F&first_utm_source=meta
  *
- * @param array $attribution As returned by atmos_get_attribution() or atmos_get_attribution_from_fields().
+ * @param array $attribution As returned by utmost_get_attribution() or utmost_get_attribution_from_fields().
  * @return string '' when there is no attribution.
  */
-function atmos_build_combined_url( $attribution ) {
+function utmost_build_combined_url( $attribution ) {
     if ( empty( $attribution ) ) {
         return '';
     }
 
     $query = array();
     foreach ( array( 'last', 'first' ) as $touch ) {
-        foreach ( atmos_get_param_map() as $param ) {
+        foreach ( utmost_get_param_map() as $param ) {
             if ( ( 'last' === $touch && 'landing' === $param ) || empty( $attribution[ $touch ][ $param ] ) ) {
                 continue;
             }
-            $query[ atmos_get_field_name( $touch, $param ) ] = $attribution[ $touch ][ $param ];
+            $query[ utmost_get_field_name( $touch, $param ) ] = $attribution[ $touch ][ $param ];
         }
     }
 
-    return atmos_own_url( isset( $attribution['last'] ) ? $attribution['last'] : array(), $query );
+    return utmost_own_url( isset( $attribution['last'] ) ? $attribution['last'] : array(), $query );
 }
 
 /**
@@ -225,36 +237,36 @@ function atmos_build_combined_url( $attribution ) {
  *
  * Example: https://example.com/spring/?utm_source=google&utm_medium=cpc&gclid=abc&referrer=https%3A%2F%2Fwww.google.com%2F
  *
- * @param array  $attribution As returned by atmos_get_attribution() or atmos_get_attribution_from_fields().
+ * @param array  $attribution As returned by utmost_get_attribution() or utmost_get_attribution_from_fields().
  * @param string $touch       'first' or 'last'.
  * @return string '' when that touch wasn't captured.
  */
-function atmos_build_touch_url( $attribution, $touch ) {
+function utmost_build_touch_url( $attribution, $touch ) {
     if ( empty( $attribution[ $touch ] ) ) {
         return '';
     }
 
     $values = $attribution[ $touch ];
-    if ( ! atmos_is_tagged( $values ) && ! empty( $values['referrer'] ) ) {
+    if ( ! utmost_is_tagged( $values ) && ! empty( $values['referrer'] ) ) {
         return $values['referrer'];
     }
 
     $query = $values;
     unset( $query['landing'] );
 
-    return atmos_own_url( $values, $query );
+    return utmost_own_url( $values, $query );
 }
 
-function atm_enqueue_tracking_script() {
+function utmost_enqueue_tracking_script() {
     wp_enqueue_script(
-        'atm-tracker',
-        plugins_url( 'js/atmos-tracker.min.js', __FILE__ ),
+        'utmost-attribution',
+        plugins_url( 'js/utmost-attribution.min.js', __FILE__ ),
         array(),
-        '1.3.0',
+        '1.4.0',
         true // Load in footer for better performance
     );
 }
-add_action( 'wp_enqueue_scripts', 'atm_enqueue_tracking_script' );
+add_action( 'wp_enqueue_scripts', 'utmost_enqueue_tracking_script' );
 
 add_action( 'plugins_loaded', function() {
     // Check for Fluent Forms and initialize adapter

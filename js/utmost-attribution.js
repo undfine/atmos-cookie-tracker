@@ -1,12 +1,15 @@
 (function() {
-    const KEY = '_atmos_attribution';
+    const KEY = '_utmost_attribution';
+    // Cookie/localStorage name used before the plugin was renamed from Atmos Cookie
+    // Tracker. Read as a fallback only; migrate() below moves visitors onto KEY.
+    const LEGACY_KEY = '_atmos_attribution';
     // Stored data format version. Data without it (or older) is cleaned up by migrate().
     const VERSION = 2;
     const urlParams = new URLSearchParams(window.location.search);
 
     // Storage key => url param name. Form fields: last touch uses the plain
     // param name (utm_source), first touch is prefixed (first_utm_source).
-    // Must match atmos_get_field_name() in plugin.php.
+    // Must match utmost_get_field_name() in plugin.php.
     const params = {
         src: 'utm_source',
         mdm: 'utm_medium',
@@ -55,6 +58,16 @@
         return match ? decodeURIComponent(match[1]) : null;
     };
 
+    // Whether anything is stored under this key, in localStorage or the cookie
+    const hasAny = (name) => {
+        try {
+            if (localStorage.getItem(name)) return true;
+        } catch (e) {
+            // Storage unavailable; fall through to the cookie check
+        }
+        return !!getCookie(name);
+    };
+
     // localStorage first, cookie as fallback
     const getStored = () => {
         for (const read of [() => localStorage.getItem(KEY), () => getCookie(KEY)]) {
@@ -66,6 +79,26 @@
             }
         }
         return null;
+    };
+
+    // Current key first, then the pre-rename key, so a one-time rename to the current
+    // key happens alongside the regular format migration below.
+    const getStoredWithSource = () => {
+        const sources = [
+            [() => localStorage.getItem(KEY), false],
+            [() => getCookie(KEY), false],
+            [() => localStorage.getItem(LEGACY_KEY), true],
+            [() => getCookie(LEGACY_KEY), true],
+        ];
+        for (const [read, isLegacy] of sources) {
+            try {
+                const data = JSON.parse(read());
+                if (data) return { data, isLegacy };
+            } catch (e) {
+                // Unavailable or malformed; try the next source
+            }
+        }
+        return { data: null, isLegacy: false };
     };
 
     const stripWww = (host) => host.replace(/^www\./i, '');
@@ -86,6 +119,16 @@
 
     const isValid = (val) => val && val !== 'null' && val !== 'undefined';
 
+    // Removes data under the pre-rename key once it's been read and migrated onto KEY
+    const clearLegacy = () => {
+        try {
+            localStorage.removeItem(LEGACY_KEY);
+        } catch (e) {
+            // Storage unavailable
+        }
+        document.cookie = LEGACY_KEY + '=; max-age=0; path=/';
+    };
+
     const save = (data) => {
         try {
             localStorage.setItem(KEY, JSON.stringify(data));
@@ -93,6 +136,7 @@
             // Storage unavailable (private mode, quota); the cookie still carries the data
         }
         setCookie(KEY, JSON.stringify(data), 365);
+        clearLegacy();
     };
 
     const clear = () => {
@@ -102,6 +146,7 @@
             // Storage unavailable
         }
         document.cookie = KEY + '=; max-age=0; path=/';
+        clearLegacy();
     };
 
     // One-time cleanup of data saved before VERSION 2. v1.x recorded internal page views
@@ -139,14 +184,14 @@
     const setHiddenInput = (form, name, value) => {
         let input = form.querySelector(`input[name="${name}"]`);
         if (!isValid(value)) {
-            if (input && input.dataset.atmos) input.remove();
+            if (input && input.dataset.utmost) input.remove();
             return;
         }
         if (!input) {
             input = document.createElement('input');
             input.type = 'hidden';
             input.name = name;
-            input.dataset.atmos = '1';
+            input.dataset.utmost = '1';
             form.appendChild(input);
         }
         input.value = value;
@@ -188,9 +233,11 @@
     }
 
     const now = Math.floor(Date.now() / 1000);
-    const stored = getStored();
+    const { data: stored, isLegacy } = getStoredWithSource();
     const data = migrate(stored) || {};
-    const needsMigration = !!stored && data !== stored;
+    // Re-save (and drop the legacy cookie) whenever the format changed OR the data
+    // only existed under the pre-rename key, even if its format was already current
+    const needsMigration = !!stored && (data !== stored || isLegacy);
     const referrerOnly = Object.keys(current).length === 1 && current.referrer;
     const protectedPaid = referrerOnly && isPaid(data.last) && now - (data.last.ts || 0) < PAID_PROTECTION_SECONDS;
 
@@ -207,6 +254,11 @@
         save(data);
     } else if (needsMigration) {
         data.last ? save(data) : clear();
+    } else if (hasAny(KEY) && hasAny(LEGACY_KEY)) {
+        // Safety net: a stray legacy cookie can reappear (e.g. a second tab still
+        // running cached pre-rename JS during the rollout) after this one already
+        // migrated. Clear it once the current key has data, without touching that data.
+        clearLegacy();
     }
 
     // 2. Fill forms present on load, and again at submit time so forms rendered

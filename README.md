@@ -1,10 +1,12 @@
-# Atmos Cookie Tracker
+# UTMost Attribution
 
-A WordPress plugin that captures first-touch and last-touch attribution data from UTM parameters, ad IDs, and referrer information, storing them in browser localStorage and cookies for later form submission tracking.
+A WordPress plugin that captures first-touch and last-touch attribution data from UTM parameters, click IDs, referrers and landing pages, storing them in browser localStorage and cookies for use in forms and CRM integrations.
+
+Formerly "Atmos Cookie Tracker" (renamed since "Atmos" wasn't a brand and "UTMost" better describes what it does and covers).
 
 ## Description
 
-Atmos Cookie Tracker automatically tracks visitor attribution data across your WordPress site and seamlessly integrates with Fluent Forms to capture marketing attribution alongside form submissions. This enables you to understand which marketing channels and campaigns are driving conversions.
+UTMost Attribution automatically tracks visitor attribution data across your WordPress site and seamlessly integrates with Fluent Forms to capture marketing attribution alongside form submissions. This enables you to understand which marketing channels and campaigns are driving conversions.
 
 ## Features
 
@@ -49,11 +51,11 @@ If either UTM is present, nothing is inferred, so tagged links are never altered
 
 A page view updates attribution only when it carries a new signal: a UTM parameter, a click ID, or a referrer from another site. Navigating between pages on your own site (including `www.` vs. bare domain) never overwrites stored attribution.
 
-**Paid protection (24 hours):** if the last touch was paid and is less than 24 hours old, a visit with only a referrer (e.g. an organic Google search) is ignored, so the ad keeps the credit. A touch counts as paid when `utm_medium` is `cpc`, `ppc` or starts with `paid`, or it has a Google or Microsoft Ads click ID. Tagged visits (UTMs or click IDs) always replace the last touch. The window is the `PAID_PROTECTION_SECONDS` constant in `js/atmos-tracker.js`.
+**Paid protection (24 hours):** if the last touch was paid and is less than 24 hours old, a visit with only a referrer (e.g. an organic Google search) is ignored, so the ad keeps the credit. A touch counts as paid when `utm_medium` is `cpc`, `ppc` or starts with `paid`, or it has a Google or Microsoft Ads click ID. Tagged visits (UTMs or click IDs) always replace the last touch. The window is the `PAID_PROTECTION_SECONDS` constant in `js/utmost-attribution.js`.
 
 ## Installation
 
-1. Upload the `atmos-cookie-tracker` folder to `/wp-content/plugins/`
+1. Upload the `utmost-attribution` folder to `/wp-content/plugins/`
 2. Activate the plugin through the 'Plugins' menu in WordPress
 3. The plugin starts tracking immediately - no configuration needed
 
@@ -67,10 +69,10 @@ When a visitor lands on your site with UTM parameters or ad IDs in the URL:
 https://yoursite.com/?utm_source=facebook&utm_medium=social&utm_campaign=spring-sale
 ```
 
-The plugin JavaScript (`atmos-tracker.js`) automatically:
+The plugin JavaScript (`utmost-attribution.js`) automatically:
 
 1. Captures the parameters from the URL
-2. Stores them in localStorage under the key `_atmos_attribution`
+2. Stores them in localStorage under the key `_utmost_attribution`
 3. Creates a secure cookie with the same data
 4. Updates both first-touch (if first visit) and last-touch attribution
 
@@ -156,45 +158,45 @@ To display attribution fields in the Fluent Forms entry view table:
 2. Add hidden input fields with the exact field names listed above
 3. The values will automatically appear in the entry details
 
-Hidden fields are only needed for entry columns and exports. Feeds, notifications and confirmations can use the Atmos SmartCodes below without adding any fields.
+Hidden fields are only needed for entry columns and exports. Feeds, notifications and confirmations can use the UTMost SmartCodes below without adding any fields.
 
 ### Reading Attribution in Other Plugins
 
-Use `atmos_get_attribution()` to read the cookie server-side. It returns only captured parameters, keyed by public name:
+Use `utmost_get_attribution()` to read the cookie server-side. It returns only captured parameters, keyed by public name:
 
 ```php
-$attribution = function_exists( 'atmos_get_attribution' ) ? atmos_get_attribution() : array();
+$attribution = function_exists( 'utmost_get_attribution' ) ? utmost_get_attribution() : array();
 // array( 'first' => array( 'utm_source' => 'google', 'referrer' => '...' ), 'last' => array( ... ) )
 ```
 
 To work from a stored submission instead (e.g. in a feed or background job), rebuild it from the entry's fields and optionally turn it into the full attribution URL:
 
 ```php
-$attribution = atmos_get_attribution_from_fields( $entry_data ); // same shape as above
-$last_url    = atmos_build_touch_url( $attribution, 'last' );    // same value as {atmos_last_attribution}
-$combined    = atmos_build_combined_url( $attribution );         // same value as {atmos_combined_attribution}
+$attribution = utmost_get_attribution_from_fields( $entry_data ); // same shape as above
+$last_url    = utmost_build_touch_url( $attribution, 'last' );    // same value as {utmost_last_attribution}
+$combined    = utmost_build_combined_url( $attribution );         // same value as {utmost_combined_attribution}
 ```
 
 ### SmartCodes
 
-Every form gets an **Atmos Attribution** group in the SmartCode dropdown (feeds, notifications, confirmations). No hidden fields are needed. Values come from the submitted entry, so they work in asynchronous feeds too.
+Every form gets a **UTMost Attribution** group in the SmartCode dropdown (feeds, notifications, confirmations). No hidden fields are needed. Values come from the submitted entry, so they work in asynchronous feeds too.
 
 | SmartCode | Value |
 |---|---|
-| `{atmos_last_attribution}` | Last touch as a real URL (see below). Use this as a CRM Referrer |
-| `{atmos_first_attribution}` | First touch, same format, e.g. for a CRM custom field |
-| `{atmos_combined_attribution}` | Both touches in one URL (see below) |
-| `{atmos_utm_source}`, `{atmos_utm_medium}`, `{atmos_utm_campaign}`, `{atmos_utm_term}`, `{atmos_utm_content}` | Last-touch UTMs |
-| `{atmos_gclid}`, `{atmos_gbraid}`, `{atmos_wbraid}`, `{atmos_msclkid}`, `{atmos_fbclid}` | Last-touch click IDs |
-| `{atmos_referrer}` | Last-touch referrer |
-| `{atmos_landing}` | Last-touch landing page |
-| `{atmos_first_utm_source}` ... `{atmos_first_landing}` | The same values for first touch |
+| `{utmost_last_attribution}` | Last touch as a real URL (see below). Use this as a CRM Referrer |
+| `{utmost_first_attribution}` | First touch, same format, e.g. for a CRM custom field |
+| `{utmost_combined_attribution}` | Both touches in one URL (see below) |
+| `{utmost_utm_source}`, `{utmost_utm_medium}`, `{utmost_utm_campaign}`, `{utmost_utm_term}`, `{utmost_utm_content}` | Last-touch UTMs |
+| `{utmost_gclid}`, `{utmost_gbraid}`, `{utmost_wbraid}`, `{utmost_msclkid}`, `{utmost_fbclid}` | Last-touch click IDs |
+| `{utmost_referrer}` | Last-touch referrer |
+| `{utmost_landing}` | Last-touch landing page |
+| `{utmost_first_utm_source}` ... `{utmost_first_landing}` | The same values for first touch |
 
 Values that weren't captured resolve to an empty string. For the page a form was submitted on (the converting page), use Fluent Forms' own `{embed_post.permalink}`.
 
 #### Attribution URLs
 
-Params are only ever added to your own URLs, never to a referrer (google.com never had your UTMs). `{atmos_last_attribution}` and `{atmos_first_attribution}` return the real URL behind a touch, using plain param names:
+Params are only ever added to your own URLs, never to a referrer (google.com never had your UTMs). `{utmost_last_attribution}` and `{utmost_first_attribution}` return the real URL behind a touch, using plain param names:
 
 | Touch | URL |
 |---|---|
@@ -209,7 +211,7 @@ https://www.google.com/
 
 This matches a CRM Referrer ("referring site or pay-per-click source"). Older entries without a landing page use the home URL as the base.
 
-`{atmos_combined_attribution}` bundles both touches: the last-touch landing page with every other value as a param, named as form fields (`referrer`, `first_utm_source`, `first_referrer`, `first_landing`, ...). First-touch values are always included, even when they match last touch, so the structure is the same for every lead. It's a data bundle rather than a real link, so prefer `{atmos_last_attribution}` for a Referrer field.
+`{utmost_combined_attribution}` bundles both touches: the last-touch landing page with every other value as a param, named as form fields (`referrer`, `first_utm_source`, `first_referrer`, `first_landing`, ...). First-touch values are always included, even when they match last touch, so the structure is the same for every lead. It's a data bundle rather than a real link, so prefer `{utmost_last_attribution}` for a Referrer field.
 
 #### Example Email Template
 
@@ -220,12 +222,12 @@ Name: {inputs.name}
 Email: {inputs.email}
 
 Attribution:
-First Touch Source: {atmos_first_utm_source}
-First Touch Campaign: {atmos_first_utm_campaign}
-Last Touch Source: {atmos_utm_source}
-Last Touch Campaign: {atmos_utm_campaign}
-Google Click ID: {atmos_gclid}
-Last touch URL: {atmos_last_attribution}
+First Touch Source: {utmost_first_utm_source}
+First Touch Campaign: {utmost_first_utm_campaign}
+Last Touch Source: {utmost_utm_source}
+Last Touch Campaign: {utmost_utm_campaign}
+Google Click ID: {utmost_gclid}
+Last touch URL: {utmost_last_attribution}
 ```
 
 ### Upgrading Stored Data
@@ -239,11 +241,15 @@ Data saved before format version 2 (plugin 1.1 and early 1.2/1.3 builds) is clea
 
 Last-touch values overwritten by the v1.1 bug can't be recovered.
 
+### Renamed from Atmos Cookie Tracker (1.4.0)
+
+The plugin was previously "Atmos Cookie Tracker" and stored data under the cookie/localStorage key `_atmos_attribution`. On a visitor's next page view after upgrading, that data is read once, migrated to the current format if it predates it, and re-saved under `_utmost_attribution`; the old cookie and localStorage entry are then cleared. `utmost_get_attribution()` also falls back to reading the old cookie name server-side, in case a visitor hasn't loaded the updated script yet. Both fallbacks (`UTMOST_LEGACY_COOKIE_KEY` in `utmost-attribution.php`, `LEGACY_KEY` in `js/utmost-attribution.js`) can be removed once no visitor still has the old cookie.
+
 ## Technical Details
 
 ### Cookie Specifications
 
-- **Name**: `_atmos_attribution`
+- **Name**: `_utmost_attribution`
 - **Duration**: 365 days
 - **Attributes**: `SameSite=Lax; Path=/`, plus `Secure` on HTTPS pages
 - **Storage**: Also duplicated in localStorage for redundancy
@@ -264,7 +270,7 @@ Last-touch values overwritten by the v1.1 bug can't be recovered.
 
 The plugin includes comprehensive logging. To view debug logs:
 
-1. Check `/wp-content/plugins/atmos-cookie-tracker/atmos-debug.log`
+1. Check `/wp-content/plugins/utmost-attribution/utmost-debug.log` (not currently wired up; logging is disabled in `forms/fluent-forms.php`)
 2. Look for entries prefixed with timestamp
 3. Logs track form rendering, field injection, and data capture
 
@@ -280,7 +286,7 @@ The tracking relies on cookies and localStorage. Most ad blockers don't prevent 
 
 ### Q: Can I customize which parameters are tracked?
 
-Currently, the tracked parameters are hardcoded in the plugin. To add one, update both the `params` map in `js/atmos-tracker.js` and `atmos_get_param_map()` in `plugin.php`.
+Currently, the tracked parameters are hardcoded in the plugin. To add one, update both the `params` map in `js/utmost-attribution.js` and `utmost_get_param_map()` in `utmost-attribution.php`.
 
 ### Q: Does this work with other form plugins?
 
@@ -292,6 +298,12 @@ Currently, the plugin only has built-in integration with Fluent Forms. Integrati
 - **LocalStorage**: Persistent until manually cleared by the user or browser
 
 ## Changelog
+### Version 1.4.0
+- Renamed from "Atmos Cookie Tracker" to "UTMost Attribution" ("Atmos" wasn't a brand; "UTMost" better covers what the plugin does). Folder, main file, JS file and script handle renamed accordingly
+- Cookie/localStorage key renamed from `_atmos_attribution` to `_utmost_attribution`; existing visitor data is migrated once (see "Renamed from Atmos Cookie Tracker" below)
+- `atmos_*` PHP functions renamed to `utmost_*`; `{atmos_*}` SmartCodes renamed to `{utmost_*}` (update any feed, notification or confirmation that references the old names)
+- Removed the accidentally-committed, always-empty `atmos-debug.log` from the repo
+
 ### Version 1.3.1
 - Added hook for Fluent Forms submissions to check if it was marked as spam and return `is_spam = true` in the response data for further processing (exclude from conversions events, etc...)
   
